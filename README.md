@@ -211,7 +211,9 @@ Before using it:
 4. Push `upload.yml` to `main` and make sure the Vercel `GITHUB_TOKEN` has
    Actions read/write.
 
-The `pipeline.yml` workflow (for **Fetch new clips now**) is still pending.
+`pipeline.yml` powers **Fetch new clips now** (`fetch` then `render`). It needs
+the repo secrets `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`, `DATABASE_URL`,
+and `BLOB_READ_WRITE_TOKEN`; optionally `GAME_NAME` while testing with GTA V.
 Until the YouTube API audit is approved, prefer manual posting or upload test
 clips with private visibility.
 
@@ -232,9 +234,9 @@ clips with private visibility.
    Blob**. This injects `DATABASE_URL` and `BLOB_READ_WRITE_TOKEN`.
 4. Create a fine-grained GitHub token with **Actions: read and write** on this
    repository only and use it as `GITHUB_TOKEN`.
-5. Push to `main`; Vercel deploys automatically. `upload.yml` exists; the
-   `pipeline.yml` workflow is still pending, so **Fetch new clips now** will
-   fail until it is added.
+5. Push to `main`; Vercel deploys automatically. Both `upload.yml` and
+   `pipeline.yml` exist; add the matching GitHub repository secrets before
+   using the run buttons.
 
 ## Database
 
