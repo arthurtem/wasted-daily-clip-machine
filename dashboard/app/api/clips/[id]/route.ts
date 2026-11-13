@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { isAuthenticated } from "@/lib/auth";
+import { getSessionRole } from "@/lib/auth";
 import { getClip, updateClip } from "@/lib/clips";
 import { canTransition } from "@/lib/transitions";
 import type { ClipPrivacy, ClipStatus } from "@/lib/types";
@@ -25,8 +25,15 @@ export async function PATCH(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
-  if (!(await isAuthenticated())) {
+  const role = await getSessionRole();
+  if (!role) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  if (role !== "owner") {
+    return NextResponse.json(
+      { error: "Review-only access." },
+      { status: 403 },
+    );
   }
 
   const { id } = await context.params;

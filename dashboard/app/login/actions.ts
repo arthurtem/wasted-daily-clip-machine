@@ -8,6 +8,7 @@ import { redirect } from "next/navigation";
 import {
   SESSION_COOKIE,
   SESSION_MAX_AGE,
+  type SessionRole,
   createSessionToken,
 } from "@/lib/session";
 
@@ -31,13 +32,24 @@ export async function login(
   }
 
   const password = formData.get("password");
-  if (typeof password !== "string" || !passwordsMatch(password, expected)) {
+  if (typeof password !== "string" || !password) {
+    return { error: "Wrong password." };
+  }
+
+  const reviewerPassword = process.env.REVIEWER_PASSWORD?.trim();
+  let role: SessionRole | null = null;
+  if (passwordsMatch(password, expected)) {
+    role = "owner";
+  } else if (reviewerPassword && passwordsMatch(password, reviewerPassword)) {
+    role = "auditor";
+  }
+  if (!role) {
     return { error: "Wrong password." };
   }
 
   let token: string;
   try {
-    token = await createSessionToken();
+    token = await createSessionToken(role);
   } catch {
     return { error: "SESSION_SECRET is not configured." };
   }

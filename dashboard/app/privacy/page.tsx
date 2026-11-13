@@ -120,8 +120,9 @@ export default function PrivacyPage() {
             <li>Rendered video files until they are posted.</li>
             <li>The YouTube video ID of each posted Short.</li>
             <li>
-              An OAuth refresh token, stored as an encrypted secret in the
-              services that run the app.
+              The connection token is stored encrypted in the app&apos;s
+              database. Disconnecting in Settings revokes it at Google and
+              deletes it.
             </li>
           </ul>
         </section>

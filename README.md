@@ -54,7 +54,7 @@ python -m clipmachine init-db        # apply migrations (safe to run again)
 python -m clipmachine fetch          # fetch clips from Twitch into the database
 python -m clipmachine render         # download, caption, render, upload, store metadata
 python -m clipmachine calibrate kaicenat  # grid image to choose a facecam_box
-python -m clipmachine upload         # placeholder (phase 5)
+python -m clipmachine upload         # upload approved clips (UPLOAD_MODE=api)
 python -m clipmachine reddit         # placeholder (later)
 ```
 
@@ -143,8 +143,8 @@ the privacy/terms links and the YouTube API Services notice.
 
 Upload screens show a visibility selector (`public` / `unlisted` / `private`,
 stored in `clips.yt_privacy`), the `CHANNEL_NAME` destination, and the YouTube
-ToS/Community Guidelines acknowledgement above Approve. `/settings` shows the
-channel recorded in `youtube_settings` and can clear the stored token reference.
+ToS/Community Guidelines acknowledgement above Approve. `/settings` connects
+and shows the YouTube channel stored in `youtube_connection`.
 
 Run the migrations after deploying schema changes:
 
@@ -170,9 +170,30 @@ waiting.
 For the Google API compliance review, the production deployment must be
 public (turn off Vercel Deployment Protection / password protection) so the
 `/`, `/privacy`, and `/terms` pages load without logging in. Use those two
-legal URLs in the OAuth consent screen. `clips.yt_privacy` is stored now; the
-API upload path (Part B) will read it before falling back to
-`YT_PRIVACY_STATUS` once that part is built.
+legal URLs in the OAuth consent screen.
+
+### Connect YouTube
+
+`/settings` has a **Connect YouTube channel** button, owner-only. Add
+`${APP_URL}/api/youtube/callback` as an authorized redirect URI in the Google
+Cloud OAuth client and keep `APP_URL` free of a trailing slash. The connection
+stores the refresh token encrypted with `TOKEN_ENCRYPTION_KEY` (AES-256-GCM),
+which must be identical in Vercel and the worker environment.
+
+`UPLOAD_MODE=api` uses the stored connection: `python -m clipmachine upload`
+refreshes the token, uploads approved clips using each clip's `yt_privacy`
+(falling back to `YT_PRIVACY_STATUS`), sets `uploaded`, and deletes the Blobs.
+If YouTube is not connected it exits without changing clips; an invalid_grant
+deletes the connection and leaves clips approved.
+
+
+### Reviewer access
+
+For app/API reviews (for example Google), set a separate `REVIEWER_PASSWORD`.
+Logging in with it creates an **auditor** session: the dashboard pages render,
+but approval, posting, workflow dispatch, and disconnect are disabled and the
+write APIs return 403. The header shows “Review-only access”. Remove the
+variable (or rotate it) after the review.
 
 ### Deploy to Vercel
 
@@ -181,8 +202,12 @@ API upload path (Part B) will read it before falling back to
 2. Add these environment variables (Production and Preview):
    `DATABASE_URL`, `DASHBOARD_PASSWORD`, `SESSION_SECRET`, `GITHUB_TOKEN`,
    `GITHUB_OWNER`, `GITHUB_REPO`, `UPLOAD_MODE`, `OWNER_NAME`,
-   `CONTACT_EMAIL`, `CHANNEL_NAME`.
-   Generate `SESSION_SECRET` with `openssl rand -base64 32`.
+   `CONTACT_EMAIL`, `CHANNEL_NAME`, `GOOGLE_OAUTH_CLIENT_ID`,
+   `GOOGLE_OAUTH_CLIENT_SECRET`, `TOKEN_ENCRYPTION_KEY`, `APP_URL`, and
+   optionally `REVIEWER_PASSWORD`.
+   Generate `SESSION_SECRET` with `openssl rand -base64 32` and
+   `TOKEN_ENCRYPTION_KEY` with `openssl rand -base64 32`. Use the same
+   encryption key in the worker/GitHub Actions environment.
 3. From the Vercel **Storage** tab, connect **Neon Postgres** and **Vercel
    Blob**. This injects `DATABASE_URL` and `BLOB_READ_WRITE_TOKEN`.
 4. Create a fine-grained GitHub token with **Actions: read and write** on this

@@ -6,11 +6,17 @@ import type { UploadMode } from "@/lib/types";
 
 export default function RunButtons({
   uploadMode,
+  readOnly = false,
 }: {
   uploadMode: UploadMode;
+  readOnly?: boolean;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+
+  if (readOnly) {
+    return null;
+  }
 
   async function run(workflow: "pipeline" | "upload") {
     setBusy(workflow);

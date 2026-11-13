@@ -6,9 +6,11 @@ import type { Counts } from "@/lib/types";
 export default function Header({
   counts,
   title = "Review queue",
+  reviewOnly = false,
 }: {
   counts?: Counts;
   title?: string;
+  reviewOnly?: boolean;
 }) {
   return (
     <header className="space-y-4">
@@ -20,6 +22,11 @@ export default function Header({
           <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
             {title}
           </h1>
+          {reviewOnly ? (
+            <p className="mt-1 text-xs font-medium text-amber-300">
+              Review-only access
+            </p>
+          ) : null}
         </div>
         <nav className="flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-900/60 p-1 text-sm">
           <Link

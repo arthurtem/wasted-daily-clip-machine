@@ -7,6 +7,8 @@ import os
 import subprocess
 from pathlib import Path
 
+import requests
+
 logger = logging.getLogger(__name__)
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
@@ -58,3 +60,16 @@ def delete_url(url: str) -> None:
     """Delete a Vercel Blob object by its public URL."""
     _run("delete", url)
     logger.info("blob delete %s", url)
+
+
+def download_file(url: str, destination: Path) -> Path:
+    """Download a public Blob URL to a local path."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with requests.get(url, stream=True, timeout=120) as response:
+        response.raise_for_status()
+        with destination.open("wb") as handle:
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    handle.write(chunk)
+    logger.info("downloaded blob %s -> %s", url, destination)
+    return destination

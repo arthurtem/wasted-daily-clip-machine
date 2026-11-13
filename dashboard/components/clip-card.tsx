@@ -12,10 +12,12 @@ export default function ClipCard({
   clip,
   age,
   channelName,
+  readOnly = false,
 }: {
   clip: QueueClip;
   age: string;
   channelName: string;
+  readOnly?: boolean;
 }) {
   const router = useRouter();
   const [title, setTitle] = useState(clip.yt_title ?? "");
@@ -25,6 +27,9 @@ export default function ClipCard({
   const [error, setError] = useState<string | null>(null);
 
   async function submit(status: "approved" | "rejected") {
+    if (readOnly) {
+      return;
+    }
     setPending(status);
     setError(null);
     try {
@@ -119,6 +124,7 @@ export default function ClipCard({
             id={`title-${clip.id}`}
             value={title}
             onChange={(event) => setTitle(event.target.value)}
+            readOnly={readOnly}
             maxLength={100}
             className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2.5 py-2 text-xs outline-none transition focus:border-yellow-400 focus:ring-2 focus:ring-yellow-400/30"
           />
@@ -135,6 +141,7 @@ export default function ClipCard({
             id={`description-${clip.id}`}
             value={description}
             onChange={(event) => setDescription(event.target.value)}
+            readOnly={readOnly}
             rows={3}
             className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2.5 py-2 text-xs outline-none transition focus:border-yellow-400 focus:ring-2 focus:ring-yellow-400/30"
           />
@@ -151,7 +158,7 @@ export default function ClipCard({
             id={`privacy-${clip.id}`}
             value={privacy}
             onChange={setPrivacy}
-            disabled={pending !== null}
+            disabled={readOnly || pending !== null}
           />
         </div>
 
@@ -166,11 +173,17 @@ export default function ClipCard({
 
         <UploadCompliance channelName={channelName} />
 
+        {readOnly ? (
+          <p className="text-[11px] text-amber-300">
+            Review-only access: approval is disabled.
+          </p>
+        ) : null}
+
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() => submit("approved")}
-            disabled={pending !== null}
+            disabled={readOnly || pending !== null}
             className="flex-1 rounded-lg bg-yellow-400 px-3 py-2 text-xs font-semibold text-zinc-950 transition hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {pending === "approved" ? "Approving…" : "Approve"}
@@ -178,7 +191,7 @@ export default function ClipCard({
           <button
             type="button"
             onClick={() => submit("rejected")}
-            disabled={pending !== null}
+            disabled={readOnly || pending !== null}
             className="flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs font-semibold text-zinc-200 transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {pending === "rejected" ? "Rejecting…" : "Reject"}

@@ -10,9 +10,11 @@ import type { ApprovedClip, ClipPrivacy } from "@/lib/types";
 export default function PostCard({
   clip,
   channelName,
+  readOnly = false,
 }: {
   clip: ApprovedClip;
   channelName: string;
+  readOnly?: boolean;
 }) {
   const router = useRouter();
   const [copied, setCopied] = useState<"title" | "description" | null>(null);
@@ -37,6 +39,9 @@ export default function PostCard({
   }
 
   async function updatePrivacy(value: ClipPrivacy) {
+    if (readOnly) {
+      return;
+    }
     const previous = privacy;
     setPrivacy(value);
     setPrivacyPending(true);
@@ -68,6 +73,9 @@ export default function PostCard({
 
   async function markPosted(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (readOnly) {
+      return;
+    }
     setPending(true);
     setError(null);
     try {
@@ -188,11 +196,17 @@ export default function PostCard({
             id={`privacy-${clip.id}`}
             value={privacy}
             onChange={updatePrivacy}
-            disabled={privacyPending || pending}
+            disabled={readOnly || privacyPending || pending}
           />
         </div>
 
         <UploadCompliance channelName={channelName} />
+
+        {readOnly ? (
+          <p className="text-[11px] text-amber-300">
+            Review-only access: posting is disabled.
+          </p>
+        ) : null}
 
         <form onSubmit={markPosted} className="space-y-2">
           <label
@@ -206,6 +220,7 @@ export default function PostCard({
               id={`posted-${clip.id}`}
               value={url}
               onChange={(event) => setUrl(event.target.value)}
+              readOnly={readOnly}
               type="url"
               inputMode="url"
               autoCapitalize="none"
@@ -215,7 +230,7 @@ export default function PostCard({
             />
             <button
               type="submit"
-              disabled={pending || !url.trim()}
+              disabled={readOnly || pending || !url.trim()}
               className="rounded-lg bg-yellow-400 px-4 py-2.5 text-sm font-semibold text-zinc-950 transition hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {pending ? "Saving…" : "Mark as posted"}

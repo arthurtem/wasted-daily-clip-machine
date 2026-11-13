@@ -1,22 +1,33 @@
 import ClipCard from "@/components/clip-card";
 import Header from "@/components/header";
 import RunButtons from "@/components/run-buttons";
+import YouTubeNoticeBanner from "@/components/youtube-notice-banner";
+import { getSessionRole } from "@/lib/auth";
 import { getCounts, getQueue } from "@/lib/clips";
+import { hasYouTubeConnection } from "@/lib/youtube-connections";
 import { formatAge } from "@/lib/format";
 import type { UploadMode } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export default async function QueuePage() {
-  const [clips, counts] = await Promise.all([getQueue(), getCounts()]);
+  const [clips, counts, role] = await Promise.all([
+    getQueue(),
+    getCounts(),
+    getSessionRole(),
+  ]);
+  const readOnly = role !== "owner";
   const uploadMode: UploadMode =
     process.env.UPLOAD_MODE === "api" ? "api" : "manual";
+  const youtubeConnected =
+    uploadMode === "api" ? await hasYouTubeConnection() : true;
   const channelName = process.env.CHANNEL_NAME?.trim() || "YouTube";
 
   return (
     <main className="mx-auto max-w-[1700px] space-y-5 px-4 py-6 sm:px-6 lg:py-8">
-      <Header counts={counts} />
-      <RunButtons uploadMode={uploadMode} />
+      <Header counts={counts} reviewOnly={readOnly} />
+      <RunButtons uploadMode={uploadMode} readOnly={readOnly} />
+      {!youtubeConnected ? <YouTubeNoticeBanner /> : null}
 
       {clips.length === 0 ? (
         <div className="rounded-3xl border border-dashed border-zinc-800 bg-zinc-900/40 px-6 py-16 text-center">
@@ -33,6 +44,7 @@ export default async function QueuePage() {
               clip={clip}
               age={formatAge(clip.clip_created_at)}
               channelName={channelName}
+              readOnly={readOnly}
             />
           ))}
         </section>

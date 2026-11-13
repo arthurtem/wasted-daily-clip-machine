@@ -158,3 +158,26 @@ def set_status(
     else:
         logger.warning("clip %s not found while setting status %s", clip_id, status)
     return updated
+
+
+def get_youtube_connection() -> dict[str, Any] | None:
+    """Return the single stored YouTube connection, including the encrypted token."""
+    with connect(row_factory=dict_row) as conn:
+        cursor = conn.execute(
+            """
+            SELECT id, channel_id, channel_title, refresh_token_enc, scopes,
+                   connected_at
+            FROM youtube_connection
+            WHERE id = 1
+            LIMIT 1
+            """
+        )
+        row = cursor.fetchone()
+    return dict(row) if row else None
+
+
+def delete_youtube_connection() -> None:
+    """Delete the stored YouTube connection."""
+    with connect() as conn:
+        conn.execute("DELETE FROM youtube_connection WHERE id = 1")
+    logger.info("deleted stored YouTube connection")

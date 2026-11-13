@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { isAuthenticated } from "@/lib/auth";
+import { getSessionRole } from "@/lib/auth";
 import { getClip } from "@/lib/clips";
 
 function safeFilename(value: string): string {
@@ -11,7 +11,7 @@ export async function GET(
   _request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
-  if (!(await isAuthenticated())) {
+  if (!(await getSessionRole())) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 

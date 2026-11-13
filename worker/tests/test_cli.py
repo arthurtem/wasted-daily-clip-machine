@@ -81,7 +81,7 @@ def test_init_db_reports_missing_database_url(
     assert "DATABASE_URL is not set" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("command", ["upload", "reddit"])
+@pytest.mark.parametrize("command", ["reddit"])
 def test_placeholder_commands(
     command: str, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -376,3 +376,16 @@ def test_render_skips_captions_when_burned_in(
 
     assert main(["render"]) == 0
     assert recorded_words == [[]]
+
+
+def test_upload_dispatches(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """upload calls run_upload and exits successfully."""
+    called: list[bool] = []
+    monkeypatch.setattr(
+        "clipmachine.cli.run_upload", lambda: called.append(True)
+    )
+
+    assert main(["upload"]) == 0
+    assert called == [True]

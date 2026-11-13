@@ -21,6 +21,7 @@ from clipmachine.fetch import run_fetch
 from clipmachine.metadata import build_youtube_metadata
 from clipmachine.render import render_final
 from clipmachine.twitch import TwitchError
+from clipmachine.upload import run_upload
 
 logger = logging.getLogger(__name__)
 
@@ -194,9 +195,9 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
 
 
 def cmd_upload(args: argparse.Namespace) -> int:
-    """Placeholder for the YouTube upload phase."""
-    print("upload is not implemented yet.", file=sys.stderr)
-    return 2
+    """Upload approved clips to YouTube in API mode."""
+    run_upload()
+    return 0
 
 
 def cmd_reddit(args: argparse.Namespace) -> int:

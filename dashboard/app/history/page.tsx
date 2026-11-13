@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import Header from "@/components/header";
 import RetryButton from "@/components/retry-button";
+import { getSessionRole } from "@/lib/auth";
 import { getCounts, getHistory } from "@/lib/clips";
 import { formatAge } from "@/lib/format";
 import type { HistoryClip } from "@/lib/types";
@@ -56,7 +57,13 @@ function RejectedItem({ clip }: { clip: HistoryClip }) {
   );
 }
 
-function FailedItem({ clip }: { clip: HistoryClip }) {
+function FailedItem({
+  clip,
+  readOnly,
+}: {
+  clip: HistoryClip;
+  readOnly: boolean;
+}) {
   return (
     <article className="space-y-3 rounded-2xl border border-red-950 bg-red-950/20 px-4 py-3">
       <div>
@@ -72,20 +79,25 @@ function FailedItem({ clip }: { clip: HistoryClip }) {
           {clip.error}
         </pre>
       ) : null}
-      <RetryButton clipId={clip.id} />
+      <RetryButton clipId={clip.id} readOnly={readOnly} />
     </article>
   );
 }
 
 export default async function HistoryPage() {
-  const [clips, counts] = await Promise.all([getHistory(), getCounts()]);
+  const [clips, counts, role] = await Promise.all([
+    getHistory(),
+    getCounts(),
+    getSessionRole(),
+  ]);
+  const readOnly = role !== "owner";
   const uploaded = clips.filter((clip) => clip.status === "uploaded");
   const rejected = clips.filter((clip) => clip.status === "rejected");
   const failed = clips.filter((clip) => clip.status === "failed");
 
   return (
     <main className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 lg:py-8">
-      <Header counts={counts} title="History" />
+      <Header counts={counts} title="History" reviewOnly={readOnly} />
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-xl font-semibold tracking-tight">History</h2>
         <Link
@@ -135,7 +147,7 @@ export default async function HistoryPage() {
         ) : (
           <div className="grid gap-2">
             {failed.map((clip) => (
-              <FailedItem key={clip.id} clip={clip} />
+              <FailedItem key={clip.id} clip={clip} readOnly={readOnly} />
             ))}
           </div>
         )}

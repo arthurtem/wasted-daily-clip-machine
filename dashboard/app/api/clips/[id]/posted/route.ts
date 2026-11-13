@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { isAuthenticated } from "@/lib/auth";
+import { getSessionRole } from "@/lib/auth";
 import { deleteClipBlobs } from "@/lib/blob";
 import { getClip, markPosted } from "@/lib/clips";
 import { parseYouTubeVideoId } from "@/lib/youtube-url";
@@ -9,8 +9,15 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
-  if (!(await isAuthenticated())) {
+  const role = await getSessionRole();
+  if (!role) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  if (role !== "owner") {
+    return NextResponse.json(
+      { error: "Review-only access." },
+      { status: 403 },
+    );
   }
 
   const { id } = await context.params;

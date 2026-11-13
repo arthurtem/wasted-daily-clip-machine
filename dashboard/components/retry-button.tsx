@@ -3,7 +3,13 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-export default function RetryButton({ clipId }: { clipId: string }) {
+export default function RetryButton({
+  clipId,
+  readOnly = false,
+}: {
+  clipId: string;
+  readOnly?: boolean;
+}) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +37,10 @@ export default function RetryButton({ clipId }: { clipId: string }) {
     } finally {
       setPending(false);
     }
+  }
+
+  if (readOnly) {
+    return null;
   }
 
   return (
