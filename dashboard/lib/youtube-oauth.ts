@@ -53,12 +53,26 @@ export function oauthConfig(): OAuthConfig {
   const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID?.trim();
   const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET?.trim();
   const appUrl = process.env.APP_URL?.trim().replace(/\/+$/, "");
-  if (!clientId || !clientSecret || !appUrl) {
+  const missing: string[] = [];
+  if (!clientId) {
+    missing.push("GOOGLE_OAUTH_CLIENT_ID");
+  }
+  if (!clientSecret) {
+    missing.push("GOOGLE_OAUTH_CLIENT_SECRET");
+  }
+  if (!appUrl) {
+    missing.push("APP_URL");
+  }
+  if (missing.length > 0) {
     throw new OAuthError(
-      "GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, and APP_URL are required",
+      `Missing environment variables: ${missing.join(", ")}`,
     );
   }
-  return { clientId, clientSecret, appUrl };
+  return {
+    clientId: clientId as string,
+    clientSecret: clientSecret as string,
+    appUrl: appUrl as string,
+  };
 }
 
 export function callbackUrl(config: OAuthConfig): string {

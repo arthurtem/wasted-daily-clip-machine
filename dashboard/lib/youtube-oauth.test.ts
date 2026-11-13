@@ -39,6 +39,15 @@ describe("OAuth URL and state", () => {
     expect(url.searchParams.get("scope")).toContain("youtube.upload");
   });
 
+  it("names missing OAuth environment variables", () => {
+    vi.stubEnv("GOOGLE_OAUTH_CLIENT_ID", "");
+    vi.stubEnv("GOOGLE_OAUTH_CLIENT_SECRET", "");
+    vi.stubEnv("APP_URL", "");
+    expect(() => buildAuthorizationUrl("state")).toThrow(
+      /GOOGLE_OAUTH_CLIENT_ID.*GOOGLE_OAUTH_CLIENT_SECRET.*APP_URL/,
+    );
+  });
+
   it("compares states safely", () => {
     expect(stateMatches("abc", "abc")).toBe(true);
     expect(stateMatches("abc", "abd")).toBe(false);

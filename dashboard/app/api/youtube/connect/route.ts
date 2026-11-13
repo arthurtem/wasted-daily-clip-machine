@@ -26,9 +26,11 @@ export async function GET() {
   try {
     url = buildAuthorizationUrl(createState());
   } catch (error) {
-    console.error("YouTube OAuth is not configured", error);
+    const detail =
+      error instanceof Error ? error.message : "Unknown configuration error";
+    console.error("YouTube OAuth is not configured", detail);
     return NextResponse.json(
-      { error: "YouTube OAuth is not configured." },
+      { error: `YouTube OAuth is not configured. ${detail}` },
       { status: 500 },
     );
   }
