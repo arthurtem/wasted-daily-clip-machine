@@ -7,9 +7,13 @@ import type { UploadMode } from "@/lib/types";
 export default function RunButtons({
   uploadMode,
   readOnly = false,
+  youtubeConnected = false,
+  showPipeline = true,
 }: {
   uploadMode: UploadMode;
   readOnly?: boolean;
+  youtubeConnected?: boolean;
+  showPipeline?: boolean;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -44,15 +48,17 @@ export default function RunButtons({
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => run("pipeline")}
-          disabled={busy !== null}
-          className="rounded-xl bg-yellow-400 px-4 py-2.5 text-sm font-semibold text-zinc-950 transition hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {busy === "pipeline" ? "Starting…" : "Fetch new clips now"}
-        </button>
-        {uploadMode === "api" ? (
+        {showPipeline ? (
+          <button
+            type="button"
+            onClick={() => run("pipeline")}
+            disabled={busy !== null}
+            className="rounded-xl bg-yellow-400 px-4 py-2.5 text-sm font-semibold text-zinc-950 transition hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {busy === "pipeline" ? "Starting…" : "Fetch new clips now"}
+          </button>
+        ) : null}
+        {uploadMode === "api" && youtubeConnected ? (
           <button
             type="button"
             onClick={() => run("upload")}
@@ -63,6 +69,12 @@ export default function RunButtons({
           </button>
         ) : null}
       </div>
+      {uploadMode === "manual" && youtubeConnected ? (
+        <p className="text-xs text-zinc-500">
+          Automatic upload is off. Set <code>UPLOAD_MODE=api</code> in the
+          environment and restart/redeploy to show the upload button.
+        </p>
+      ) : null}
       {message ? (
         <p role="status" className="text-sm text-zinc-400">
           {message}

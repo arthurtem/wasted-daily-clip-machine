@@ -37,9 +37,9 @@ export async function POST(
     );
   }
 
-  const token = process.env.GITHUB_TOKEN;
-  const owner = process.env.GITHUB_OWNER;
-  const repo = process.env.GITHUB_REPO;
+  const token = process.env.GITHUB_TOKEN?.trim();
+  const owner = process.env.GITHUB_OWNER?.trim();
+  const repo = process.env.GITHUB_REPO?.trim();
   if (!token || !owner || !repo) {
     return NextResponse.json(
       { error: "GitHub dispatch is not configured." },
@@ -73,9 +73,20 @@ export async function POST(
 
   if (!response.ok) {
     const detail = await response.text();
+    let hint = "";
+    if (response.status === 401) {
+      hint =
+        "GitHub rejected GITHUB_TOKEN. Use a valid fine-grained token with Actions read/write on this repo. ";
+    } else if (response.status === 403) {
+      hint =
+        "GitHub denied the request. Check the token has Actions read/write permission. ";
+    } else if (response.status === 404) {
+      hint =
+        "GitHub could not find the repo or workflow. Check GITHUB_OWNER/GITHUB_REPO and that the workflow exists on main. ";
+    }
     return NextResponse.json(
       {
-        error: `GitHub ${response.status}: ${detail.slice(0, 300)}`,
+        error: `${hint}GitHub ${response.status}: ${detail.slice(0, 300)}`,
       },
       { status: 502 },
     );

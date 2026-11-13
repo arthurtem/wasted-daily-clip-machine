@@ -195,6 +195,26 @@ but approval, posting, workflow dispatch, and disconnect are disabled and the
 write APIs return 403. The header shows “Review-only access”. Remove the
 variable (or rotate it) after the review.
 
+
+### Automatic uploads
+
+`UPLOAD_MODE=api` shows **Upload approved now** on the queue. The button calls
+the dashboard API, which dispatches `.github/workflows/upload.yml` on `main`.
+
+Before using it:
+1. Set `UPLOAD_MODE=api` in Vercel and redeploy.
+2. Add these GitHub repository secrets for the workflow: `DATABASE_URL`,
+   `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`,
+   `TOKEN_ENCRYPTION_KEY`, `BLOB_READ_WRITE_TOKEN`.
+3. Keep `TOKEN_ENCRYPTION_KEY` identical to the Vercel value; otherwise the
+   worker cannot decrypt the connection.
+4. Push `upload.yml` to `main` and make sure the Vercel `GITHUB_TOKEN` has
+   Actions read/write.
+
+The `pipeline.yml` workflow (for **Fetch new clips now**) is still pending.
+Until the YouTube API audit is approved, prefer manual posting or upload test
+clips with private visibility.
+
 ### Deploy to Vercel
 
 1. Import the GitHub repo in Vercel and set **Root Directory** to `dashboard`.
@@ -212,9 +232,9 @@ variable (or rotate it) after the review.
    Blob**. This injects `DATABASE_URL` and `BLOB_READ_WRITE_TOKEN`.
 4. Create a fine-grained GitHub token with **Actions: read and write** on this
    repository only and use it as `GITHUB_TOKEN`.
-5. Push to `main`; Vercel deploys automatically. The run buttons dispatch
-   `.github/workflows/pipeline.yml` and `upload.yml`, so those files must exist
-   on `main` before the buttons succeed.
+5. Push to `main`; Vercel deploys automatically. `upload.yml` exists; the
+   `pipeline.yml` workflow is still pending, so **Fetch new clips now** will
+   fail until it is added.
 
 ## Database
 

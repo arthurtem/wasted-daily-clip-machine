@@ -1,5 +1,6 @@
 import Header from "@/components/header";
 import PostCard from "@/components/post-card";
+import RunButtons from "@/components/run-buttons";
 import YouTubeNoticeBanner from "@/components/youtube-notice-banner";
 import { getSessionRole } from "@/lib/auth";
 import { getApprovedQueue, getCounts } from "@/lib/clips";
@@ -15,8 +16,7 @@ export default async function PostPage() {
   ]);
   const readOnly = role !== "owner";
   const uploadMode = process.env.UPLOAD_MODE === "api" ? "api" : "manual";
-  const youtubeConnected =
-    uploadMode === "api" ? await hasYouTubeConnection() : true;
+  const youtubeConnected = await hasYouTubeConnection();
   const channelName = process.env.CHANNEL_NAME?.trim() || "YouTube";
 
   return (
@@ -28,10 +28,19 @@ export default async function PostPage() {
       />
 
       <p className="text-sm text-zinc-400">
-        Download the MP4, post it as a public Short, then paste the YouTube
-        link and mark it posted.
+        {uploadMode === "api"
+          ? "Approved clips can be uploaded to YouTube by the worker."
+          : "Download the MP4, post it as a public Short, then paste the YouTube link and mark it posted."}
       </p>
-      {!youtubeConnected ? <YouTubeNoticeBanner /> : null}
+      <RunButtons
+        uploadMode={uploadMode}
+        readOnly={readOnly}
+        youtubeConnected={youtubeConnected}
+        showPipeline={false}
+      />
+      {uploadMode === "api" && !youtubeConnected ? (
+        <YouTubeNoticeBanner />
+      ) : null}
 
       {clips.length === 0 ? (
         <div className="rounded-3xl border border-dashed border-zinc-800 bg-zinc-900/40 px-6 py-16 text-center">

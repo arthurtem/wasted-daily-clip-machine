@@ -19,15 +19,18 @@ export default async function QueuePage() {
   const readOnly = role !== "owner";
   const uploadMode: UploadMode =
     process.env.UPLOAD_MODE === "api" ? "api" : "manual";
-  const youtubeConnected =
-    uploadMode === "api" ? await hasYouTubeConnection() : true;
+  const youtubeConnected = await hasYouTubeConnection();
   const channelName = process.env.CHANNEL_NAME?.trim() || "YouTube";
 
   return (
     <main className="mx-auto max-w-[1700px] space-y-5 px-4 py-6 sm:px-6 lg:py-8">
       <Header counts={counts} reviewOnly={readOnly} />
-      <RunButtons uploadMode={uploadMode} readOnly={readOnly} />
-      {!youtubeConnected ? <YouTubeNoticeBanner /> : null}
+      <RunButtons
+        uploadMode={uploadMode}
+        readOnly={readOnly}
+        youtubeConnected={youtubeConnected}
+      />
+      {uploadMode === "api" && !youtubeConnected ? <YouTubeNoticeBanner /> : null}
 
       {clips.length === 0 ? (
         <div className="rounded-3xl border border-dashed border-zinc-800 bg-zinc-900/40 px-6 py-16 text-center">
