@@ -10,7 +10,7 @@ for **Wasted Daily**.
   /clipmachine       config, database, CLI, shared models
   /migrations        SQL migrations
   /tests             pytest suite (mocked, no network)
-/dashboard           Next.js review dashboard (phase 4)
+/dashboard           Next.js review dashboard
 /config              streamers.yaml and settings.yaml
 /.github/workflows   GitHub Actions workflows
 ```
@@ -112,6 +112,41 @@ pytest worker/tests
 The suite mocks every external call and needs no database. An optional
 integration test runs only when `DATABASE_URL` is set; it calls `init_db()`
 twice against that database and checks that the `clips` table and indexes exist.
+
+
+## Dashboard
+
+The review dashboard lives in `/dashboard` (Next.js App Router, TypeScript,
+Tailwind). It only reads/writes Postgres and dispatches GitHub workflows.
+
+```bash
+cd dashboard
+npm install
+cp .env.example .env.local   # fill in the values
+npm run dev                  # http://localhost:3000
+npm run build                # production build / type check
+```
+
+Auth uses one `DASHBOARD_PASSWORD` and a signed httpOnly cookie
+(`SESSION_SECRET`). `proxy.ts` redirects unauthenticated pages to `/login` and
+returns 401 for API routes. `UPLOAD_MODE=manual` hides the upload button;
+`UPLOAD_MODE=api` shows it once the YouTube API audit is approved.
+
+### Deploy to Vercel
+
+1. Import the GitHub repo in Vercel and set **Root Directory** to `dashboard`.
+   Framework preset: Next.js.
+2. Add these environment variables (Production and Preview):
+   `DATABASE_URL`, `DASHBOARD_PASSWORD`, `SESSION_SECRET`, `GITHUB_TOKEN`,
+   `GITHUB_OWNER`, `GITHUB_REPO`, `UPLOAD_MODE`.
+   Generate `SESSION_SECRET` with `openssl rand -base64 32`.
+3. From the Vercel **Storage** tab, connect **Neon Postgres** and **Vercel
+   Blob**. This injects `DATABASE_URL` and `BLOB_READ_WRITE_TOKEN`.
+4. Create a fine-grained GitHub token with **Actions: read and write** on this
+   repository only and use it as `GITHUB_TOKEN`.
+5. Push to `main`; Vercel deploys automatically. The run buttons dispatch
+   `.github/workflows/pipeline.yml` and `upload.yml`, so those files must exist
+   on `main` before the buttons succeed.
 
 ## Database
 
