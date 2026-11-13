@@ -1,0 +1,44 @@
+# Secrets and credentials
+.env
+.env.*
+!.env.example
+client_secret*.json
+token*.json
+
+# Generated working files
+/work/
+*.mp4
+*.mkv
+*.mov
+*.webm
+*.wav
+*.mp3
+*.m4a
+*.jpg
+*.jpeg
+*.png
+!dashboard/public/**
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
+# OS
+.DS_Store
+
+# Model caches
+.cache/

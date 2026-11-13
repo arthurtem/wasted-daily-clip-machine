@@ -1,0 +1,8 @@
+game_name: "Grand Theft Auto VI"
+lookback_hours: 24
+min_views: 200
+max_clips_per_run: 10
+max_clip_seconds: 60
+uploads_per_run: 2
+refine_cam_edges: true
+skip_burned_captions: true

@@ -1,0 +1,153 @@
+"""Fetch GTA clips from Twitch and store them as new rows."""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+from clipmachine import db
+from clipmachine.config import Settings, Streamer, load_config
+from clipmachine.models import NewClip
+from clipmachine.twitch import TwitchClient
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class FetchResult:
+    """Counts produced by one fetch run."""
+
+    streamers_checked: int
+    clips_found: int
+    selected: int
+    new_clips: int
+
+
+def _as_int(value: Any) -> int:
+    """Coerce a Twitch numeric value to int, defaulting to zero."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _as_float(value: Any) -> float:
+    """Coerce a Twitch numeric value to float, defaulting to zero."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _parse_timestamp(value: Any) -> datetime | None:
+    """Parse a Twitch ISO timestamp into an aware datetime."""
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _keep(clip: dict[str, Any], game_id: str, settings: Settings) -> bool:
+    """Return whether a raw clip passes the game, views, and duration filters."""
+    return (
+        clip.get("game_id") == game_id
+        and _as_int(clip.get("view_count")) >= settings.min_views
+        and _as_float(clip.get("duration")) <= settings.max_clip_seconds
+    )
+
+
+def _to_new_clip(streamer: Streamer, clip: dict[str, Any]) -> NewClip | None:
+    """Map a raw Twitch clip to a NewClip, or None when required fields are missing."""
+    clip_id = clip.get("id")
+    url = clip.get("url")
+    if not isinstance(clip_id, str) or not clip_id:
+        return None
+    if not isinstance(url, str) or not url:
+        return None
+    title = clip.get("title")
+    return NewClip(
+        id=clip_id,
+        streamer_login=streamer.twitch_login,
+        streamer_name=streamer.name,
+        clip_url=url,
+        clip_title=title if isinstance(title, str) else None,
+        view_count=_as_int(clip.get("view_count")),
+        duration_s=_as_float(clip.get("duration")),
+        clip_created_at=_parse_timestamp(clip.get("created_at")),
+    )
+
+
+def run_fetch(config_directory: Path | None = None) -> FetchResult:
+    """Fetch, filter, and insert the top new clips from Twitch."""
+    config = load_config(config_directory)
+    settings = config.settings
+    client = TwitchClient()
+    game_id = client.get_game_id(settings.game_name)
+
+    enabled = [streamer for streamer in config.streamers if streamer.enabled]
+    user_ids = client.get_user_ids(
+        [streamer.twitch_login for streamer in enabled]
+    )
+
+    ended_at = datetime.now(timezone.utc)
+    started_at = ended_at - timedelta(hours=settings.lookback_hours)
+
+    candidates: list[tuple[Streamer, dict[str, Any]]] = []
+    for streamer in enabled:
+        broadcaster_id = user_ids.get(streamer.twitch_login.lower())
+        if broadcaster_id is None:
+            logger.warning(
+                "clip fetch streamer=%s skipped: Twitch user not found",
+                streamer.twitch_login,
+            )
+            continue
+        clips = client.get_clips(broadcaster_id, started_at, ended_at)
+        kept = [clip for clip in clips if _keep(clip, game_id, settings)]
+        logger.info(
+            "clip fetch streamer=%s clips=%d kept=%d",
+            streamer.twitch_login,
+            len(clips),
+            len(kept),
+        )
+        candidates.extend((streamer, clip) for clip in kept)
+
+    candidates.sort(
+        key=lambda item: _as_int(item[1].get("view_count")), reverse=True
+    )
+    selected = candidates[: settings.max_clips_per_run]
+
+    new_clips = 0
+    for streamer, clip in selected:
+        new_clip = _to_new_clip(streamer, clip)
+        if new_clip is None:
+            logger.warning(
+                "clip fetch streamer=%s skipped malformed clip %r",
+                streamer.twitch_login,
+                clip.get("id"),
+            )
+            continue
+        try:
+            inserted = db.upsert_new_clip(new_clip)
+        except Exception:
+            logger.exception("clip %s failed to insert", new_clip.id)
+            continue
+        new_clips += int(inserted)
+
+    logger.info(
+        "fetch summary: streamers=%d clips_found=%d selected=%d new=%d",
+        len(enabled),
+        len(candidates),
+        len(selected),
+        new_clips,
+    )
+    return FetchResult(
+        streamers_checked=len(enabled),
+        clips_found=len(candidates),
+        selected=len(selected),
+        new_clips=new_clips,
+    )

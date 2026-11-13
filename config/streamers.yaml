@@ -1,0 +1,16 @@
+streamers:
+  - name: "Kai Cenat"          # display name used in titles
+    twitch_login: "kaicenat"
+    enabled: true
+    facecam_override: null     # null = auto-detect; or top-left | top-right | bottom-left | bottom-right | none
+    facecam_box: [0.0, 0.20, 0.209, 0.30]   # optional [x, y, w, h] fractions; wins over auto-detect
+  - name: "xQc"
+    twitch_login: "xqc"
+    enabled: true
+    facecam_override: null
+    facecam_box: [0.0, 0.17, 0.209, 0.24]
+  - name: "StableRonaldo"
+    twitch_login: "stableronaldo"
+    enabled: true
+    facecam_override: null
+    facecam_box: null
