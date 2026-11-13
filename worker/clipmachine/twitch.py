@@ -200,6 +200,34 @@ class TwitchClient:
         logger.info("resolved %d/%d Twitch user ids", len(mapping), len(unique))
         return mapping
 
+    def get_users(
+        self, logins: Sequence[str]
+    ) -> dict[str, dict[str, str]]:
+        """Return user id and display name for each Twitch login."""
+        mapping: dict[str, dict[str, str]] = {}
+        unique = sorted({login.lower() for login in logins if login})
+        for start in range(0, len(unique), MAX_USERS_PER_CALL):
+            chunk = unique[start : start + MAX_USERS_PER_CALL]
+            params = [("login", login) for login in chunk]
+            payload = self._helix_get("/users", params)
+            for user in payload.get("data") or []:
+                login = str(user.get("login", "")).lower()
+                user_id = user.get("id")
+                if not login or not isinstance(user_id, str) or not user_id:
+                    continue
+                mapping[login] = {
+                    "id": user_id,
+                    "display_name": str(
+                        user.get("display_name") or login
+                    ),
+                }
+        missing = [login for login in unique if login not in mapping]
+        if missing:
+            logger.warning(
+                "Twitch returned no user for logins: %s", ", ".join(missing)
+            )
+        return mapping
+
     def get_clips(
         self, broadcaster_id: str, started_at: datetime, ended_at: datetime
     ) -> list[dict[str, Any]]:

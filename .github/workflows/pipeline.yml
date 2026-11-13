@@ -2,6 +2,19 @@ name: Fetch and render clips
 
 on:
   workflow_dispatch:
+    inputs:
+      game_name:
+        description: Twitch game name
+        required: false
+        type: string
+      streamers:
+        description: Comma-separated Twitch logins (blank = all enabled)
+        required: false
+        type: string
+      min_views:
+        description: Minimum clip views (blank = config value)
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -16,7 +29,9 @@ jobs:
       TWITCH_CLIENT_SECRET: ${{ secrets.TWITCH_CLIENT_SECRET }}
       BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
       WHISPER_CACHE_DIR: .cache/whisper
-      GAME_NAME: ${{ secrets.GAME_NAME }}
+      GAME_NAME: ${{ inputs.game_name || secrets.GAME_NAME }}
+      STREAMERS: ${{ inputs.streamers }}
+      MIN_VIEWS: ${{ inputs.min_views }}
     steps:
       - uses: actions/checkout@v4
 

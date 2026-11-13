@@ -198,8 +198,18 @@ variable (or rotate it) after the review.
 
 ### Automatic uploads
 
-`UPLOAD_MODE=api` shows **Upload approved now** on the queue. The button calls
-the dashboard API, which dispatches `.github/workflows/upload.yml` on `main`.
+The queue fetch panel searches Twitch directly for games and streamers
+(`/api/twitch/streamers`, `/api/twitch/games`), lets you set min views, and
+then dispatches `pipeline.yml`. It needs `TWITCH_CLIENT_ID` and
+`TWITCH_CLIENT_SECRET` in the dashboard environment. The three configured
+streamers are selected initially; searched streamers outside
+`config/streamers.yaml` are resolved by the worker with their Twitch display
+names. Until GTA VI launches, pick Grand Theft Auto V and set min views to 0
+for testing.
+
+`UPLOAD_MODE=api` shows **Upload approved now** on the queue and `/post`. The
+buttons call the dashboard API, which dispatches the corresponding workflow on
+`main` and then shows the GitHub run link/status plus a recent-workflow panel.
 
 Before using it:
 1. Set `UPLOAD_MODE=api` in Vercel and redeploy.
@@ -224,7 +234,8 @@ clips with private visibility.
 2. Add these environment variables (Production and Preview):
    `DATABASE_URL`, `DASHBOARD_PASSWORD`, `SESSION_SECRET`, `GITHUB_TOKEN`,
    `GITHUB_OWNER`, `GITHUB_REPO`, `UPLOAD_MODE`, `OWNER_NAME`,
-   `CONTACT_EMAIL`, `CHANNEL_NAME`, `GOOGLE_OAUTH_CLIENT_ID`,
+   `CONTACT_EMAIL`, `CHANNEL_NAME`, `TWITCH_CLIENT_ID`,
+   `TWITCH_CLIENT_SECRET`, `GOOGLE_OAUTH_CLIENT_ID`,
    `GOOGLE_OAUTH_CLIENT_SECRET`, `TOKEN_ENCRYPTION_KEY`, `APP_URL`, and
    optionally `REVIEWER_PASSWORD`.
    Generate `SESSION_SECRET` with `openssl rand -base64 32` and

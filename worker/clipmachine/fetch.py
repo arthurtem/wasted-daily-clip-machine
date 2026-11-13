@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -11,7 +12,7 @@ from typing import Any
 from clipmachine import db
 from clipmachine.config import Settings, Streamer, load_config
 from clipmachine.models import NewClip
-from clipmachine.twitch import TwitchClient
+from clipmachine.twitch import TwitchClient, TwitchError
 
 logger = logging.getLogger(__name__)
 
@@ -86,10 +87,57 @@ def run_fetch(config_directory: Path | None = None) -> FetchResult:
     """Fetch, filter, and insert the top new clips from Twitch."""
     config = load_config(config_directory)
     settings = config.settings
+    min_views_override = os.environ.get("MIN_VIEWS", "").strip()
+    if min_views_override:
+        try:
+            min_views = int(min_views_override)
+        except ValueError as exc:
+            raise ValueError("MIN_VIEWS must be an integer") from exc
+        if min_views < 0:
+            raise ValueError("MIN_VIEWS must be >= 0")
+        settings = replace(settings, min_views=min_views)
     client = TwitchClient()
     game_id = client.get_game_id(settings.game_name)
 
-    enabled = [streamer for streamer in config.streamers if streamer.enabled]
+    selected_logins = list(
+        dict.fromkeys(
+            login.strip().lower()
+            for login in os.environ.get("STREAMERS", "").split(",")
+            if login.strip()
+        )
+    )
+    config_by_login = {
+        streamer.twitch_login.lower(): streamer
+        for streamer in config.streamers
+    }
+    if selected_logins:
+        unknown = [
+            login for login in selected_logins if login not in config_by_login
+        ]
+        user_details: dict[str, dict[str, str]] = {}
+        if unknown:
+            try:
+                user_details = client.get_users(unknown)
+            except TwitchError as exc:
+                logger.warning(
+                    "could not look up selected streamers: %s", exc
+                )
+        enabled = []
+        for login in selected_logins:
+            configured = config_by_login.get(login)
+            if configured is not None:
+                enabled.append(configured)
+                continue
+            display_name = (
+                user_details.get(login, {}).get("display_name") or login
+            )
+            enabled.append(
+                Streamer(name=display_name, twitch_login=login)
+            )
+    else:
+        enabled = [
+            streamer for streamer in config.streamers if streamer.enabled
+        ]
     user_ids = client.get_user_ids(
         [streamer.twitch_login for streamer in enabled]
     )

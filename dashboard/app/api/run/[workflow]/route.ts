@@ -3,9 +3,65 @@ import { NextResponse } from "next/server";
 import { getSessionRole } from "@/lib/auth";
 
 const WORKFLOWS = new Set(["pipeline", "upload"]);
+const GITHUB_HEADERS = {
+  Accept: "application/vnd.github+json",
+  "X-GitHub-Api-Version": "2022-11-28",
+};
+
+interface WorkflowRunInfo {
+  id: number;
+  run_number: number;
+  status: string;
+  conclusion: string | null;
+  html_url: string;
+  created_at: string | null;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function findWorkflowRun(
+  token: string,
+  owner: string,
+  repo: string,
+  workflow: string,
+  dispatchedAt: number,
+): Promise<WorkflowRunInfo | null> {
+  const url = `https://api.github.com/repos/${owner}/${repo}/actions/workflows/${workflow}.yml/runs?per_page=10`;
+  for (const delay of [400, 1000, 2000]) {
+    await sleep(delay);
+    try {
+      const response = await fetch(url, {
+        headers: { ...GITHUB_HEADERS, Authorization: `Bearer ${token}` },
+        cache: "no-store",
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!response.ok) {
+        continue;
+      }
+      const payload = (await response.json().catch(() => null)) as
+        | { workflow_runs?: WorkflowRunInfo[] }
+        | null;
+      const runs = payload?.workflow_runs ?? [];
+      const match = runs.find((run) => {
+        if (!run.created_at) {
+          return false;
+        }
+        return Date.parse(run.created_at) >= dispatchedAt - 10_000;
+      });
+      if (match) {
+        return match;
+      }
+    } catch (error) {
+      console.error("Could not look up the workflow run", error);
+    }
+  }
+  return null;
+}
 
 export async function POST(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ workflow: string }> },
 ) {
   const role = await getSessionRole();
@@ -29,7 +85,7 @@ export async function POST(
 
   if (
     workflow === "upload" &&
-    (process.env.UPLOAD_MODE ?? "manual") !== "api"
+    (process.env.UPLOAD_MODE ?? "manual").trim() !== "api"
   ) {
     return NextResponse.json(
       { error: "Uploads are in manual mode." },
@@ -47,19 +103,92 @@ export async function POST(
     );
   }
 
+  let inputs: Record<string, string> | undefined;
+  if (workflow === "pipeline") {
+    let raw: unknown = null;
+    try {
+      raw = await request.json();
+    } catch {
+      raw = null;
+    }
+    if (raw !== null) {
+      if (typeof raw !== "object" || Array.isArray(raw)) {
+        return NextResponse.json(
+          { error: "Expected a JSON object." },
+          { status: 400 },
+        );
+      }
+      const record = raw as Record<string, unknown>;
+      const game = record.game_name;
+      if (game !== undefined) {
+        if (typeof game !== "string" || game.length > 100) {
+          return NextResponse.json(
+            { error: "game_name must be a string of at most 100 chars." },
+            { status: 400 },
+          );
+        }
+      }
+      const minViews = record.min_views;
+      if (minViews !== undefined) {
+        if (
+          typeof minViews !== "number" ||
+          !Number.isInteger(minViews) ||
+          minViews < 0
+        ) {
+          return NextResponse.json(
+            { error: "min_views must be a non-negative integer." },
+            { status: 400 },
+          );
+        }
+      }
+      const streamers = record.streamers;
+      if (streamers !== undefined) {
+        if (
+          !Array.isArray(streamers) ||
+          streamers.some(
+            (login) => typeof login !== "string" || login.length > 50,
+          )
+        ) {
+          return NextResponse.json(
+            { error: "streamers must be an array of Twitch logins." },
+            { status: 400 },
+          );
+        }
+      }
+      inputs = {};
+      if (typeof game === "string" && game.trim()) {
+        inputs.game_name = game.trim();
+      }
+      if (typeof minViews === "number") {
+        inputs.min_views = String(minViews);
+      }
+      if (Array.isArray(streamers)) {
+        const selected = streamers
+          .map((login) => String(login).trim())
+          .filter(Boolean);
+        if (selected.length > 0) {
+          inputs.streamers = selected.join(",");
+        }
+      }
+    }
+  }
+
   const endpoint = `https://api.github.com/repos/${owner}/${repo}/actions/workflows/${workflow}.yml/dispatches`;
+  const dispatchedAt = Date.now();
 
   let response: Response;
   try {
     response = await fetch(endpoint, {
       method: "POST",
       headers: {
+        ...GITHUB_HEADERS,
         Authorization: `Bearer ${token}`,
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ ref: "main" }),
+      body: JSON.stringify({
+        ref: "main",
+        ...(inputs && Object.keys(inputs).length > 0 ? { inputs } : {}),
+      }),
       cache: "no-store",
       signal: AbortSignal.timeout(15_000),
     });
@@ -83,6 +212,9 @@ export async function POST(
     } else if (response.status === 404) {
       hint =
         "GitHub could not find the repo or workflow. Check GITHUB_OWNER/GITHUB_REPO and that the workflow exists on main. ";
+    } else if (response.status === 422) {
+      hint =
+        "GitHub rejected the workflow inputs. Push the latest pipeline.yml (with game_name, min_views, and streamers inputs) to main. ";
     }
     return NextResponse.json(
       {
@@ -92,5 +224,29 @@ export async function POST(
     );
   }
 
-  return NextResponse.json({ ok: true });
+  const workflowUrl = `https://github.com/${owner}/${repo}/actions/workflows/${workflow}.yml`;
+  const run = await findWorkflowRun(
+    token,
+    owner,
+    repo,
+    workflow,
+    dispatchedAt,
+  );
+
+  return NextResponse.json({
+    ok: true,
+    workflow,
+    inputs: inputs ?? {},
+    workflow_url: workflowUrl,
+    run: run
+      ? {
+          id: run.id,
+          run_number: run.run_number,
+          status: run.status,
+          conclusion: run.conclusion,
+          html_url: run.html_url,
+          created_at: run.created_at,
+        }
+      : null,
+  });
 }

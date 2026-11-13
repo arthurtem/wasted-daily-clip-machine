@@ -21,12 +21,15 @@ class FakeClient:
         game_id: str,
         user_ids: dict[str, str],
         clips_by_broadcaster: dict[str, list[dict[str, Any]]],
+        display_names: dict[str, str] | None = None,
     ) -> None:
         """Store the canned responses for a fetch run."""
         self.game_id = game_id
         self.user_ids = user_ids
         self.clips_by_broadcaster = clips_by_broadcaster
+        self.display_names = display_names or {}
         self.requested_logins: list[str] = []
+        self.requested_user_lookups: list[str] = []
         self.clips_calls: list[str] = []
 
     def get_game_id(self, name: str) -> str:
@@ -37,6 +40,17 @@ class FakeClient:
         """Record the requested logins and return the canned mapping."""
         self.requested_logins = list(logins)
         return self.user_ids
+
+    def get_users(self, logins: list[str]) -> dict[str, dict[str, str]]:
+        """Return canned id and display name details for logins."""
+        self.requested_user_lookups.extend(logins)
+        return {
+            login: {
+                "id": self.user_ids.get(login, ""),
+                "display_name": self.display_names.get(login, login),
+            }
+            for login in logins
+        }
 
     def get_clips(
         self, broadcaster_id: str, started_at: datetime, ended_at: datetime
@@ -229,3 +243,71 @@ def test_malformed_clip_is_skipped(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert [clip.id for clip in upserts] == ["good"]
     assert result.new_clips == 1
+
+
+def test_streamer_filter_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """STREAMERS restricts the fetch to the requested logins."""
+    monkeypatch.setenv("STREAMERS", "xqc")
+    streamers = [
+        Streamer(name="Kai Cenat", twitch_login="kaicenat"),
+        Streamer(name="xQc", twitch_login="xqc"),
+    ]
+    client = FakeClient(
+        game_id="gta5",
+        user_ids={"kaicenat": "1001", "xqc": "1002"},
+        clips_by_broadcaster={"1002": [make_clip("keep", views=9000)]},
+    )
+    install(monkeypatch, make_config(streamers), client)
+
+    result = fetch.run_fetch()
+
+    assert client.requested_logins == ["xqc"]
+    assert client.clips_calls == ["1002"]
+    assert result.streamers_checked == 1
+    assert result.new_clips == 1
+
+
+def test_min_views_environment_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    """MIN_VIEWS lets a test run include low-view clips."""
+    monkeypatch.setenv("MIN_VIEWS", "0")
+    streamers = [Streamer(name="xQc", twitch_login="xqc")]
+    client = FakeClient(
+        game_id="gta5",
+        user_ids={"xqc": "1002"},
+        clips_by_broadcaster={"1002": [make_clip("low", views=5)]},
+    )
+    upserts = install(
+        monkeypatch,
+        make_config(streamers, min_views=1000),
+        client,
+    )
+
+    result = fetch.run_fetch()
+
+    assert result.new_clips == 1
+    assert [clip.id for clip in upserts] == ["low"]
+
+
+def test_selected_streamer_outside_config_uses_twitch_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A searched streamer not in streamers.yaml is fetched with its display name."""
+    monkeypatch.setenv("STREAMERS", "newstreamer")
+    client = FakeClient(
+        game_id="gta5",
+        user_ids={"newstreamer": "9001"},
+        clips_by_broadcaster={"9001": [make_clip("new", views=9000)]},
+        display_names={"newstreamer": "New Streamer"},
+    )
+    upserts = install(
+        monkeypatch,
+        make_config([Streamer(name="xQc", twitch_login="xqc")]),
+        client,
+    )
+
+    result = fetch.run_fetch()
+
+    assert client.requested_user_lookups == ["newstreamer"]
+    assert client.requested_logins == ["newstreamer"]
+    assert result.new_clips == 1
+    assert upserts[0].streamer_name == "New Streamer"
