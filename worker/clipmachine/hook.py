@@ -1,4 +1,4 @@
-"""Build short hooks and wrap them for ffmpeg drawtext."""
+"""Build short hooks for YouTube titles."""
 
 from __future__ import annotations
 
@@ -9,7 +9,6 @@ from typing import Any
 MAX_HOOK_CHARS = 40
 MIN_HOOK_WORDS = 3
 FALLBACK_SUFFIX = "in GTA 6"
-WRAP_WIDTH = 20
 
 EMOJI_RE = re.compile(
     "[\U0001F1E6-\U0001F1FF"
@@ -54,7 +53,7 @@ def _truncate(text: str, limit: int) -> str:
 
 
 def make_hook(clip: Mapping[str, Any]) -> str:
-    """Return a short on-screen hook derived from the clip title."""
+    """Return a short YouTube title hook derived from the clip title."""
     title = clip.get("clip_title")
     cleaned = _clean_title(title if isinstance(title, str) else "")
     hook = _truncate(cleaned, MAX_HOOK_CHARS)
@@ -62,19 +61,3 @@ def make_hook(clip: Mapping[str, Any]) -> str:
         streamer = str(clip.get("streamer_name") or "Streamer").strip()
         hook = f"{streamer} {FALLBACK_SUFFIX}"
     return hook
-
-
-def wrap_hook(text: str, width: int = WRAP_WIDTH) -> str:
-    """Wrap hook text into short lines for ffmpeg drawtext."""
-    lines: list[str] = []
-    current = ""
-    for word in text.split():
-        candidate = f"{current} {word}".strip()
-        if current and len(candidate) > width:
-            lines.append(current)
-            current = word
-        else:
-            current = candidate
-    if current:
-        lines.append(current)
-    return "\n".join(lines)

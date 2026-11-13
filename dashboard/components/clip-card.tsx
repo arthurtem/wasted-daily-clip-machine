@@ -49,7 +49,7 @@ export default function ClipCard({
   }
 
   return (
-    <article className="overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-900/60">
+    <article className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/60">
       {clip.blob_url ? (
         <video
           src={clip.blob_url}
@@ -57,7 +57,7 @@ export default function ClipCard({
           controls
           playsInline
           preload="metadata"
-          className="aspect-[9/16] w-full bg-black object-contain"
+          className="mx-auto block max-h-[60vh] w-auto max-w-full bg-black object-contain"
         />
       ) : (
         <div className="flex aspect-[9/16] items-center justify-center bg-black text-sm text-zinc-500">
@@ -65,17 +65,17 @@ export default function ClipCard({
         </div>
       )}
 
-      <div className="space-y-4 p-4 sm:p-5">
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-lg font-semibold">{clip.streamer_name}</h2>
+      <div className="space-y-3 p-3 sm:p-4">
+        <div className="space-y-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <h2 className="text-base font-semibold">{clip.streamer_name}</h2>
             {clip.reddit_score != null ? (
-              <span className="rounded-full bg-orange-500/15 px-2.5 py-1 text-xs font-semibold text-orange-300">
+              <span className="rounded-full bg-orange-500/15 px-2 py-0.5 text-[11px] font-semibold text-orange-300">
                 Trending on Reddit · {formatCount(clip.reddit_score)}
               </span>
             ) : null}
           </div>
-          <p className="text-sm text-zinc-400">
+          <p className="text-xs text-zinc-400">
             {formatCount(clip.view_count)} views · {age}
             {" · "}
             <a
@@ -89,16 +89,16 @@ export default function ClipCard({
           </p>
         </div>
 
-        <div className="space-y-2">
-          <div className="flex items-baseline justify-between gap-3">
+        <div className="space-y-1.5">
+          <div className="flex items-baseline justify-between gap-2">
             <label
               htmlFor={`title-${clip.id}`}
-              className="text-sm font-medium"
+              className="text-xs font-medium"
             >
               YouTube title
             </label>
             <span
-              className={`text-xs tabular-nums ${
+              className={`text-[11px] tabular-nums ${
                 title.length > 100 ? "text-red-400" : "text-zinc-500"
               }`}
             >
@@ -110,14 +110,14 @@ export default function ClipCard({
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             maxLength={100}
-            className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm outline-none transition focus:border-yellow-400 focus:ring-2 focus:ring-yellow-400/30"
+            className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2.5 py-2 text-xs outline-none transition focus:border-yellow-400 focus:ring-2 focus:ring-yellow-400/30"
           />
         </div>
 
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           <label
             htmlFor={`description-${clip.id}`}
-            className="text-sm font-medium"
+            className="text-xs font-medium"
           >
             YouTube description
           </label>
@@ -125,8 +125,8 @@ export default function ClipCard({
             id={`description-${clip.id}`}
             value={description}
             onChange={(event) => setDescription(event.target.value)}
-            rows={5}
-            className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm outline-none transition focus:border-yellow-400 focus:ring-2 focus:ring-yellow-400/30"
+            rows={3}
+            className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2.5 py-2 text-xs outline-none transition focus:border-yellow-400 focus:ring-2 focus:ring-yellow-400/30"
           />
         </div>
 
@@ -144,7 +144,7 @@ export default function ClipCard({
             type="button"
             onClick={() => submit("approved")}
             disabled={pending !== null}
-            className="flex-1 rounded-xl bg-yellow-400 px-4 py-3 text-sm font-semibold text-zinc-950 transition hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex-1 rounded-lg bg-yellow-400 px-3 py-2 text-xs font-semibold text-zinc-950 transition hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {pending === "approved" ? "Approving…" : "Approve"}
           </button>
@@ -152,7 +152,7 @@ export default function ClipCard({
             type="button"
             onClick={() => submit("rejected")}
             disabled={pending !== null}
-            className="flex-1 rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm font-semibold text-zinc-200 transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs font-semibold text-zinc-200 transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {pending === "rejected" ? "Rejecting…" : "Reject"}
           </button>

@@ -9,7 +9,6 @@ import subprocess
 from pathlib import Path
 
 from clipmachine.facecam import Layout
-from clipmachine.hook import wrap_hook
 
 logger = logging.getLogger(__name__)
 
@@ -18,9 +17,6 @@ OUT_HEIGHT = 1920
 CAM_HEIGHT = 640
 GAME_HEIGHT = 1280
 OUT_FPS = 30
-HOOK_CAM_TOP_Y = 760
-HOOK_DEFAULT_Y = 80
-HOOK_FONT = "DejaVu Sans"
 FFMPEG_ENV = "FFMPEG_BIN"
 FFPROBE_ENV = "FFPROBE_BIN"
 
@@ -192,13 +188,6 @@ def render_vertical(source: Path, layout: Layout, out_path: Path) -> None:
     )
 
 
-def hook_y(layout: Layout) -> int:
-    """Return the drawtext y position for the hook."""
-    return (
-        HOOK_CAM_TOP_Y if layout.kind == "cam_top" else HOOK_DEFAULT_Y
-    )
-
-
 def _escape_filter_path(path: Path) -> str:
     """Escape a path for use inside an ffmpeg filter option."""
     value = str(path).replace("\\", "\\\\").replace("'", "\\'")
@@ -212,26 +201,15 @@ def build_final_filtergraph(
     src_w: int,
     src_h: int,
     ass_path: Path | None = None,
-    hook_file: Path | None = None,
 ) -> str:
-    """Build the layout graph plus ASS captions and the drawtext hook."""
+    """Build the layout graph plus optional ASS captions."""
     graph = build_filtergraph(layout, src_w, src_h)
     current = "v"
     if ass_path is not None:
         escaped = _escape_filter_path(ass_path)
         graph += f";[{current}]ass=filename='{escaped}'[captioned]"
         current = "captioned"
-    if hook_file is not None:
-        escaped_hook = _escape_filter_path(hook_file)
-        graph += (
-            f";[{current}]drawtext=textfile='{escaped_hook}'"
-            f":font='{HOOK_FONT}':fontsize=64:fontcolor=white"
-            ":box=1:boxcolor=black@0.6:boxborderw=14"
-            f":x=(w-text_w)/2:y={hook_y(layout)}:line_spacing=6"
-            ":enable='between(t,0,2.5)'[vout]"
-        )
-    else:
-        graph += f";[{current}]null[vout]"
+    graph += f";[{current}]null[vout]"
     return graph
 
 
@@ -241,20 +219,12 @@ def render_final(
     out_path: Path,
     thumb_path: Path,
     ass_path: Path | None = None,
-    hook_text: str | None = None,
 ) -> None:
-    """Render the vertical Short with captions and hook, plus a thumbnail."""
+    """Render the vertical Short with captions, plus a thumbnail."""
     src_w, src_h = probe_video(source)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    hook_file: Path | None = None
-    if hook_text:
-        hook_file = out_path.parent / "hook.txt"
-        hook_file.write_text(wrap_hook(hook_text), encoding="utf-8")
-
-    graph = build_final_filtergraph(
-        layout, src_w, src_h, ass_path, hook_file
-    )
+    graph = build_final_filtergraph(layout, src_w, src_h, ass_path)
     command = [
         ffmpeg_bin(),
         "-y",

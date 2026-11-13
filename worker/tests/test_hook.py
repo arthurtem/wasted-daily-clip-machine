@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from clipmachine.hook import make_hook, wrap_hook
+from clipmachine.hook import make_hook
 
 
 def test_hook_cleans_emojis_urls_and_punctuation() -> None:
@@ -47,11 +47,3 @@ def test_hook_truncates_at_word_boundary() -> None:
     assert len(hook) <= 40
     assert not hook.endswith(" ")
     assert hook.split()[-1] in clip["clip_title"].split()
-
-
-def test_wrap_hook_breaks_long_text() -> None:
-    """Long hooks are wrapped for drawtext."""
-    wrapped = wrap_hook("this is a fairly long hook that needs wrapping")
-
-    assert "\n" in wrapped
-    assert all(len(line) <= 20 for line in wrapped.splitlines())

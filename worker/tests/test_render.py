@@ -104,8 +104,8 @@ def _has_filter(name: str) -> bool:
     return result.returncode == 0
 
 
-def test_final_graph_includes_captions_and_hook(tmp_path: Path) -> None:
-    """The final graph chains layout, ASS, and drawtext."""
+def test_final_graph_includes_captions(tmp_path: Path) -> None:
+    """The final graph chains the layout and ASS captions."""
     from clipmachine.render import build_final_filtergraph
 
     graph = build_final_filtergraph(
@@ -113,38 +113,33 @@ def test_final_graph_includes_captions_and_hook(tmp_path: Path) -> None:
         1920,
         1080,
         tmp_path / "captions.ass",
-        tmp_path / "hook.txt",
     )
 
     assert "ass=filename=" in graph
     assert "captions.ass" in graph
-    assert "drawtext=textfile=" in graph
-    assert "hook.txt" in graph
-    assert "enable='between(t,0,2.5)'" in graph
-    assert "y=760" in graph
+    assert "drawtext" not in graph
     assert "[vout]" in graph
 
 
-def test_final_graph_without_captions_uses_null(tmp_path: Path) -> None:
-    """No transcript still produces a valid graph with the hook."""
+def test_final_graph_without_captions_uses_null() -> None:
+    """No transcript still produces a valid graph without drawtext."""
     from clipmachine.render import build_final_filtergraph
 
     graph = build_final_filtergraph(
-        Layout("no_cam", None, 1.0), 1920, 1080, None, tmp_path / "hook.txt"
+        Layout("no_cam", None, 1.0), 1920, 1080, None
     )
 
     assert "ass=filename=" not in graph
-    assert "drawtext=textfile=" in graph
-    assert "y=80" in graph
-    assert graph.endswith("[vout]")
+    assert "drawtext" not in graph
+    assert graph.endswith("null[vout]")
 
 
 @pytest.mark.skipif(
-    not (_has_filter("ass") and _has_filter("drawtext")),
-    reason="ffmpeg lacks ass/drawtext filters",
+    not _has_filter("ass"),
+    reason="ffmpeg lacks the ass filter",
 )
-def test_render_final_with_captions_and_hook(tmp_path: Path) -> None:
-    """A generated clip renders with ASS captions and a hook thumbnail."""
+def test_render_final_with_captions(tmp_path: Path) -> None:
+    """A generated clip renders with ASS captions and a thumbnail."""
     from clipmachine.captions import build_ass
     from clipmachine.render import render_final
 
@@ -177,7 +172,7 @@ def test_render_final_with_captions_and_hook(tmp_path: Path) -> None:
     final = tmp_path / "final.mp4"
     thumb = tmp_path / "thumb.jpg"
 
-    render_final(source, layout, final, thumb, ass_path, "TEST HOOK")
+    render_final(source, layout, final, thumb, ass_path)
 
     assert probe_video(final) == (1080, 1920)
     assert thumb.exists()

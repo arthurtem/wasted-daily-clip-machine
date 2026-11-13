@@ -18,7 +18,6 @@ from clipmachine.config import ConfigError, load_config
 from clipmachine.download import DownloadError, download_clip
 from clipmachine.facecam import detect_layout
 from clipmachine.fetch import run_fetch
-from clipmachine.hook import make_hook
 from clipmachine.metadata import build_youtube_metadata
 from clipmachine.render import render_final
 from clipmachine.twitch import TwitchError
@@ -120,7 +119,6 @@ def cmd_render(args: argparse.Namespace) -> int:
             ass_path = build_ass(
                 words, layout, source.parent / "captions.ass"
             )
-            hook = make_hook(clip)
             final_path = source.parent / "final.mp4"
             thumb_path = source.parent / "thumb.jpg"
             render_final(
@@ -129,7 +127,6 @@ def cmd_render(args: argparse.Namespace) -> int:
                 final_path,
                 thumb_path,
                 ass_path,
-                hook,
             )
 
             metadata = build_youtube_metadata(clip)

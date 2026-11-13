@@ -178,11 +178,9 @@ def test_render_runs_full_pipeline(
         out_path: Path,
         thumb_out: Path,
         ass: Path | None = None,
-        hook: str | None = None,
     ) -> None:
         """Record the render call without touching ffmpeg."""
         assert ass == ass_path
-        assert hook == "xQc loses it completely"
 
     def fake_put(path: Path, pathname: str) -> str:
         """Record an upload and return a fake public URL."""
@@ -204,9 +202,6 @@ def test_render_runs_full_pipeline(
     monkeypatch.setattr(
         "clipmachine.cli.build_ass",
         lambda words, layout, path: ass_path,
-    )
-    monkeypatch.setattr(
-        "clipmachine.cli.make_hook", lambda clip: "xQc loses it completely"
     )
     monkeypatch.setattr("clipmachine.cli.render_final", fake_render)
     monkeypatch.setattr("clipmachine.cli.put_file", fake_put)
@@ -266,7 +261,6 @@ def test_render_failure_marks_failed_and_keeps_work(
     )
     monkeypatch.setattr(db, "set_status", fake_status)
     monkeypatch.setattr("clipmachine.cli.transcribe", lambda path: [])
-    monkeypatch.setattr("clipmachine.cli.make_hook", lambda clip: "hook")
     monkeypatch.setattr(
         "clipmachine.cli.render_final",
         lambda *args, **kwargs: (_ for _ in ()).throw(
@@ -319,7 +313,6 @@ def test_render_upload_failure_deletes_partial_uploads(
     )
     monkeypatch.setattr(db, "set_status", fake_status)
     monkeypatch.setattr("clipmachine.cli.transcribe", lambda path: [])
-    monkeypatch.setattr("clipmachine.cli.make_hook", lambda clip: "hook")
     monkeypatch.setattr(
         "clipmachine.cli.render_final", lambda *args, **kwargs: None
     )
@@ -373,7 +366,6 @@ def test_render_skips_captions_when_burned_in(
         lambda path: (_ for _ in ()).throw(AssertionError("should not transcribe")),
     )
     monkeypatch.setattr("clipmachine.cli.build_ass", fake_build_ass)
-    monkeypatch.setattr("clipmachine.cli.make_hook", lambda clip: "hook")
     monkeypatch.setattr(
         "clipmachine.cli.render_final", lambda *args, **kwargs: None
     )

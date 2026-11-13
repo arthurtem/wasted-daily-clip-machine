@@ -13,7 +13,7 @@ export default async function QueuePage() {
     process.env.UPLOAD_MODE === "api" ? "api" : "manual";
 
   return (
-    <main className="mx-auto max-w-6xl space-y-5 px-4 py-6 sm:px-6 lg:py-8">
+    <main className="mx-auto max-w-[1700px] space-y-5 px-4 py-6 sm:px-6 lg:py-8">
       <Header counts={counts} />
       <RunButtons uploadMode={uploadMode} />
 
@@ -25,7 +25,7 @@ export default async function QueuePage() {
           </p>
         </div>
       ) : (
-        <section className="grid gap-6 lg:grid-cols-2">
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
           {clips.map((clip) => (
             <ClipCard
               key={clip.id}

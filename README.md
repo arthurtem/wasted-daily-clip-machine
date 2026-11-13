@@ -19,7 +19,7 @@ for **Wasted Daily**.
 
 - Python 3.11
 - A Postgres database (Neon)
-- `ffmpeg`/`ffprobe` with `libass`, `freetype`, `fontconfig`, and `drawtext`
+- `ffmpeg`/`ffprobe` with `libass`, `freetype`, and `fontconfig`
   (Homebrew core ffmpeg lacks these; `FFMPEG_BIN`/`FFPROBE_BIN` can point at
   another build such as `ffmpeg-alt`)
 - Node.js 18+ and npm (Vercel Blob helper)
@@ -65,8 +65,9 @@ Until GTA VI clips exist (19 November 2026), test with
 ## Work directory
 
 `render` writes to `work/<clip_id>/` (gitignored): `source.mp4`, `detect.jpg`
-(face boxes in yellow, detected cam box in green), `captions.ass`, `hook.txt`,
-`final.mp4`, and `thumb.jpg`. On success both files are uploaded to Blob as
+(face boxes in yellow, detected cam box in green), `captions.ass`,
+`final.mp4`, and `thumb.jpg`. The hook is used only for the YouTube title,
+not drawn on the video. On success both files are uploaded to Blob as
 `shorts/<clip_id>.mp4` and `shorts/<clip_id>.jpg`, the row becomes `rendered`,
 and the work directory is deleted. Failures keep the work directory and mark
 the clip `failed`; any partial uploads are deleted.
@@ -97,7 +98,7 @@ all caps are ignored to reduce false positives. Set it to `false` in
 `settings.yaml` to always add our captions.
 `BLOB_READ_WRITE_TOKEN` is read by `worker/scripts/blob.mjs`; keep
 `worker/scripts/node_modules` installed. YouTube metadata is generated from the
-hook and stored on the row (`yt_title`, `yt_description`, `yt_tags`) for the
+clip title hook and stored on the row (`yt_title`, `yt_description`, `yt_tags`) for the
 review dashboard.
 
 `--config-dir PATH` must come before the command, e.g.
