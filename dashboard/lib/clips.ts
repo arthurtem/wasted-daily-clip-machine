@@ -2,6 +2,7 @@ import "server-only";
 
 import { getSql } from "@/lib/db";
 import type {
+  ApprovedClip,
   ClipForUpdate,
   ClipStatus,
   Counts,
@@ -61,6 +62,13 @@ function toHistoryClip(row: Row): HistoryClip {
   };
 }
 
+function toApprovedClip(row: Row): ApprovedClip {
+  return {
+    ...toQueueClip(row),
+    updated_at: asIso(row.updated_at),
+  };
+}
+
 export async function getQueue(): Promise<QueueClip[]> {
   const sql = getSql();
   const rows = (await sql`
@@ -76,6 +84,21 @@ export async function getQueue(): Promise<QueueClip[]> {
       clip_created_at DESC NULLS LAST
   `) as Row[];
   return rows.map(toQueueClip);
+}
+
+
+export async function getApprovedQueue(): Promise<ApprovedClip[]> {
+  const sql = getSql();
+  const rows = (await sql`
+    SELECT
+      id, clip_title, clip_url, streamer_login, streamer_name, view_count,
+      clip_created_at, reddit_score, blob_url, thumb_url, yt_title,
+      yt_description, updated_at
+    FROM clips
+    WHERE status = 'approved'
+    ORDER BY updated_at ASC NULLS FIRST
+  `) as Row[];
+  return rows.map(toApprovedClip);
 }
 
 export async function getCounts(): Promise<Counts> {
@@ -99,8 +122,7 @@ export async function getCounts(): Promise<Counts> {
   };
 }
 
-export async function getHistory(): Promise<HistoryClip[]> {
-  const sql = getSql();
+export async function getHistory(): Promise<HistoryClip[]> {  const sql = getSql();
   const rows = (await sql`
     SELECT
       id, clip_title, clip_url, streamer_login, streamer_name, view_count,
@@ -117,7 +139,9 @@ export async function getHistory(): Promise<HistoryClip[]> {
 export async function getClip(id: string): Promise<ClipForUpdate | null> {
   const sql = getSql();
   const rows = (await sql`
-    SELECT id, status, yt_title, yt_description
+    SELECT
+      id, status, streamer_login, yt_title, yt_description, blob_url,
+      thumb_url
     FROM clips
     WHERE id = ${id}
     LIMIT 1
@@ -129,8 +153,11 @@ export async function getClip(id: string): Promise<ClipForUpdate | null> {
   return {
     id: asString(row.id),
     status: asString(row.status) as ClipStatus,
+    streamer_login: asString(row.streamer_login),
     yt_title: asNullableString(row.yt_title),
     yt_description: asNullableString(row.yt_description),
+    blob_url: asNullableString(row.blob_url),
+    thumb_url: asNullableString(row.thumb_url),
   };
 }
 
@@ -152,6 +179,23 @@ export async function updateClip(
       yt_description = ${values.yt_description},
       updated_at = now()
     WHERE id = ${id} AND status = ${expectedStatus}
+    RETURNING id
+  `) as Row[];
+  return rows.length === 1;
+}
+
+export async function markPosted(
+  id: string,
+  youtubeVideoId: string,
+): Promise<boolean> {
+  const sql = getSql();
+  const rows = (await sql`
+    UPDATE clips
+    SET
+      status = 'uploaded',
+      youtube_video_id = ${youtubeVideoId},
+      updated_at = now()
+    WHERE id = ${id} AND status = 'approved'
     RETURNING id
   `) as Row[];
   return rows.length === 1;

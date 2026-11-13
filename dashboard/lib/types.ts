@@ -29,11 +29,18 @@ export interface HistoryClip extends QueueClip {
   updated_at: string | null;
 }
 
+export interface ApprovedClip extends QueueClip {
+  updated_at: string | null;
+}
+
 export interface ClipForUpdate {
   id: string;
   status: ClipStatus;
+  streamer_login: string;
   yt_title: string | null;
   yt_description: string | null;
+  blob_url: string | null;
+  thumb_url: string | null;
 }
 
 export interface Counts {

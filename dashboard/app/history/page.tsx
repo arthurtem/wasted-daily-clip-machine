@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import Header from "@/components/header";
 import RetryButton from "@/components/retry-button";
-import { getHistory } from "@/lib/clips";
+import { getCounts, getHistory } from "@/lib/clips";
 import { formatAge } from "@/lib/format";
 import type { HistoryClip } from "@/lib/types";
 
@@ -78,14 +78,14 @@ function FailedItem({ clip }: { clip: HistoryClip }) {
 }
 
 export default async function HistoryPage() {
-  const clips = await getHistory();
+  const [clips, counts] = await Promise.all([getHistory(), getCounts()]);
   const uploaded = clips.filter((clip) => clip.status === "uploaded");
   const rejected = clips.filter((clip) => clip.status === "rejected");
   const failed = clips.filter((clip) => clip.status === "failed");
 
   return (
     <main className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 lg:py-8">
-      <Header />
+      <Header counts={counts} title="History" />
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-xl font-semibold tracking-tight">History</h2>
         <Link

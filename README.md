@@ -133,6 +133,21 @@ Auth uses one `DASHBOARD_PASSWORD` and a signed httpOnly cookie
 returns 401 for API routes. `UPLOAD_MODE=manual` hides the upload button;
 `UPLOAD_MODE=api` shows it once the YouTube API audit is approved.
 
+
+### Manual posting (`/post`)
+
+With `UPLOAD_MODE=manual`, approved clips appear at `/post`, oldest approval
+first. Each card has the video, a same-origin **Download MP4** link
+(`<streamer_login>-<clip_id>.mp4`), copy-title/copy-description buttons, and a
+YouTube Shorts link field.
+
+`POST /api/clips/[id]/posted` accepts `youtube.com/shorts/...`,
+`youtu.be/...`, or `youtube.com/watch?v=...`, saves the video id, sets the clip
+to `uploaded`, and deletes the video + thumbnail from Vercel Blob. The
+dashboard therefore needs `BLOB_READ_WRITE_TOKEN` in every environment where
+posting is used. The header shows a **Post** badge with the number of clips
+waiting.
+
 ### Deploy to Vercel
 
 1. Import the GitHub repo in Vercel and set **Root Directory** to `dashboard`.
