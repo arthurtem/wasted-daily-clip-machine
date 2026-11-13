@@ -134,6 +134,24 @@ returns 401 for API routes. `UPLOAD_MODE=manual` hides the upload button;
 `UPLOAD_MODE=api` shows it once the YouTube API audit is approved.
 
 
+### Public pages and compliance
+
+`/` is a public landing page; logged-in users are redirected to `/queue`.
+`/privacy` and `/terms` are public. `proxy.ts` protects `/queue`, `/post`,
+`/history`, `/settings`, and all `/api/*` routes. Every page has a footer with
+the privacy/terms links and the YouTube API Services notice.
+
+Upload screens show a visibility selector (`public` / `unlisted` / `private`,
+stored in `clips.yt_privacy`), the `CHANNEL_NAME` destination, and the YouTube
+ToS/Community Guidelines acknowledgement above Approve. `/settings` shows the
+channel recorded in `youtube_settings` and can clear the stored token reference.
+
+Run the migrations after deploying schema changes:
+
+```bash
+python -m clipmachine init-db
+```
+
 ### Manual posting (`/post`)
 
 With `UPLOAD_MODE=manual`, approved clips appear at `/post`, oldest approval
@@ -148,13 +166,22 @@ dashboard therefore needs `BLOB_READ_WRITE_TOKEN` in every environment where
 posting is used. The header shows a **Post** badge with the number of clips
 waiting.
 
+
+For the Google API compliance review, the production deployment must be
+public (turn off Vercel Deployment Protection / password protection) so the
+`/`, `/privacy`, and `/terms` pages load without logging in. Use those two
+legal URLs in the OAuth consent screen. `clips.yt_privacy` is stored now; the
+API upload path (Part B) will read it before falling back to
+`YT_PRIVACY_STATUS` once that part is built.
+
 ### Deploy to Vercel
 
 1. Import the GitHub repo in Vercel and set **Root Directory** to `dashboard`.
    Framework preset: Next.js.
 2. Add these environment variables (Production and Preview):
    `DATABASE_URL`, `DASHBOARD_PASSWORD`, `SESSION_SECRET`, `GITHUB_TOKEN`,
-   `GITHUB_OWNER`, `GITHUB_REPO`, `UPLOAD_MODE`.
+   `GITHUB_OWNER`, `GITHUB_REPO`, `UPLOAD_MODE`, `OWNER_NAME`,
+   `CONTACT_EMAIL`, `CHANNEL_NAME`.
    Generate `SESSION_SECRET` with `openssl rand -base64 32`.
 3. From the Vercel **Storage** tab, connect **Neon Postgres** and **Vercel
    Blob**. This injects `DATABASE_URL` and `BLOB_READ_WRITE_TOKEN`.

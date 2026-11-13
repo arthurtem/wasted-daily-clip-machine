@@ -3,13 +3,23 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import type { ApprovedClip } from "@/lib/types";
+import UploadCompliance from "@/components/upload-compliance";
+import VisibilitySelect from "@/components/visibility-select";
+import type { ApprovedClip, ClipPrivacy } from "@/lib/types";
 
-export default function PostCard({ clip }: { clip: ApprovedClip }) {
+export default function PostCard({
+  clip,
+  channelName,
+}: {
+  clip: ApprovedClip;
+  channelName: string;
+}) {
   const router = useRouter();
   const [copied, setCopied] = useState<"title" | "description" | null>(null);
   const [url, setUrl] = useState("");
   const [pending, setPending] = useState(false);
+  const [privacy, setPrivacy] = useState<ClipPrivacy>(clip.yt_privacy);
+  const [privacyPending, setPrivacyPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const title = clip.yt_title ?? "";
   const description = clip.yt_description ?? "";
@@ -23,6 +33,36 @@ export default function PostCard({ clip }: { clip: ApprovedClip }) {
       window.setTimeout(() => setCopied(null), 1500);
     } catch {
       setError("Could not copy to the clipboard.");
+    }
+  }
+
+  async function updatePrivacy(value: ClipPrivacy) {
+    const previous = privacy;
+    setPrivacy(value);
+    setPrivacyPending(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/clips/${clip.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ yt_privacy: value }),
+      });
+      const data = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+      if (!response.ok) {
+        throw new Error(data?.error ?? `Request failed (${response.status})`);
+      }
+      router.refresh();
+    } catch (privacyError) {
+      setPrivacy(previous);
+      setError(
+        privacyError instanceof Error
+          ? privacyError.message
+          : "Could not save visibility.",
+      );
+    } finally {
+      setPrivacyPending(false);
     }
   }
 
@@ -136,6 +176,23 @@ export default function PostCard({ clip }: { clip: ApprovedClip }) {
             {description || "—"}
           </pre>
         </div>
+
+        <div className="space-y-1.5">
+          <label
+            htmlFor={`privacy-${clip.id}`}
+            className="text-xs font-semibold uppercase tracking-wide text-zinc-500"
+          >
+            YouTube visibility
+          </label>
+          <VisibilitySelect
+            id={`privacy-${clip.id}`}
+            value={privacy}
+            onChange={updatePrivacy}
+            disabled={privacyPending || pending}
+          />
+        </div>
+
+        <UploadCompliance channelName={channelName} />
 
         <form onSubmit={markPosted} className="space-y-2">
           <label

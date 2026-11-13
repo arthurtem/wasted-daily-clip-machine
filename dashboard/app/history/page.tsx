@@ -89,7 +89,7 @@ export default async function HistoryPage() {
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-xl font-semibold tracking-tight">History</h2>
         <Link
-          href="/"
+          href="/queue"
           className="text-sm text-zinc-400 underline decoration-zinc-700 underline-offset-4 transition hover:text-white"
         >
           Back to queue

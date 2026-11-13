@@ -9,6 +9,7 @@ export default async function PostPage() {
     getApprovedQueue(),
     getCounts(),
   ]);
+  const channelName = process.env.CHANNEL_NAME?.trim() || "YouTube";
 
   return (
     <main className="mx-auto max-w-6xl space-y-5 px-4 py-6 sm:px-6 lg:py-8">
@@ -29,7 +30,7 @@ export default async function PostPage() {
       ) : (
         <section className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
           {clips.map((clip) => (
-            <PostCard key={clip.id} clip={clip} />
+            <PostCard key={clip.id} clip={clip} channelName={channelName} />
           ))}
         </section>
       )}

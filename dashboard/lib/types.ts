@@ -1,3 +1,5 @@
+export type ClipPrivacy = "public" | "unlisted" | "private";
+
 export type ClipStatus =
   | "new"
   | "downloaded"
@@ -20,6 +22,7 @@ export interface QueueClip {
   thumb_url: string | null;
   yt_title: string | null;
   yt_description: string | null;
+  yt_privacy: ClipPrivacy;
 }
 
 export interface HistoryClip extends QueueClip {
@@ -39,6 +42,7 @@ export interface ClipForUpdate {
   streamer_login: string;
   yt_title: string | null;
   yt_description: string | null;
+  yt_privacy: ClipPrivacy;
   blob_url: string | null;
   thumb_url: string | null;
 }

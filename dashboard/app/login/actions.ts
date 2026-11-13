@@ -51,5 +51,5 @@ export async function login(
     maxAge: SESSION_MAX_AGE,
   });
 
-  redirect("/");
+  redirect("/queue");
 }

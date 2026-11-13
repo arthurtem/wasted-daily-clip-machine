@@ -1,40 +1,36 @@
-import ClipCard from "@/components/clip-card";
-import Header from "@/components/header";
-import RunButtons from "@/components/run-buttons";
-import { getCounts, getQueue } from "@/lib/clips";
-import { formatAge } from "@/lib/format";
-import type { UploadMode } from "@/lib/types";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+
+import { isAuthenticated } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-export default async function QueuePage() {
-  const [clips, counts] = await Promise.all([getQueue(), getCounts()]);
-  const uploadMode: UploadMode =
-    process.env.UPLOAD_MODE === "api" ? "api" : "manual";
+export default async function LandingPage() {
+  if (await isAuthenticated()) {
+    redirect("/queue");
+  }
 
   return (
-    <main className="mx-auto max-w-[1700px] space-y-5 px-4 py-6 sm:px-6 lg:py-8">
-      <Header counts={counts} />
-      <RunButtons uploadMode={uploadMode} />
-
-      {clips.length === 0 ? (
-        <div className="rounded-3xl border border-dashed border-zinc-800 bg-zinc-900/40 px-6 py-16 text-center">
-          <h2 className="text-lg font-semibold">No clips waiting</h2>
-          <p className="mt-2 text-sm text-zinc-400">
-            Rendered Shorts will appear here for review.
-          </p>
-        </div>
-      ) : (
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-          {clips.map((clip) => (
-            <ClipCard
-              key={clip.id}
-              clip={clip}
-              age={formatAge(clip.clip_created_at)}
-            />
-          ))}
-        </section>
-      )}
+    <main className="mx-auto flex min-h-[70vh] max-w-3xl flex-col justify-center px-6 py-16">
+      <p className="text-xs font-semibold uppercase tracking-[0.3em] text-yellow-400">
+        Wasted Daily
+      </p>
+      <h1 className="mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">
+        Wasted Daily Clip Machine
+      </h1>
+      <p className="mt-5 max-w-2xl text-base leading-7 text-zinc-400">
+        Wasted Daily Clip Machine is an internal tool that turns Twitch clips
+        into YouTube Shorts for the Wasted Daily YouTube channel. Every upload
+        is reviewed and approved by a human before it is posted.
+      </p>
+      <div className="mt-8">
+        <Link
+          href="/login"
+          className="inline-flex rounded-xl bg-yellow-400 px-5 py-3 text-sm font-semibold text-zinc-950 transition hover:bg-yellow-300"
+        >
+          Log in
+        </Link>
+      </div>
     </main>
   );
 }

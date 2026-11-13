@@ -23,7 +23,7 @@ export default function Header({
         </div>
         <nav className="flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-900/60 p-1 text-sm">
           <Link
-            href="/"
+            href="/queue"
             className="rounded-full px-4 py-2 font-medium text-zinc-200 transition hover:bg-zinc-800"
           >
             Queue
@@ -44,6 +44,12 @@ export default function Header({
             className="rounded-full px-4 py-2 font-medium text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
           >
             History
+          </Link>
+          <Link
+            href="/settings"
+            className="rounded-full px-4 py-2 font-medium text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
+          >
+            Settings
           </Link>
         </nav>
       </div>

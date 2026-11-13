@@ -3,9 +3,19 @@ import { NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
 import { getClip, updateClip } from "@/lib/clips";
 import { canTransition } from "@/lib/transitions";
-import type { ClipStatus } from "@/lib/types";
+import type { ClipPrivacy, ClipStatus } from "@/lib/types";
 
-const ALLOWED_FIELDS = new Set(["status", "yt_title", "yt_description"]);
+const ALLOWED_FIELDS = new Set([
+  "status",
+  "yt_title",
+  "yt_description",
+  "yt_privacy",
+]);
+const PRIVACY_VALUES = new Set<ClipPrivacy>([
+  "public",
+  "unlisted",
+  "private",
+]);
 
 function badRequest(message: string) {
   return NextResponse.json({ error: message }, { status: 400 });
@@ -43,7 +53,8 @@ export async function PATCH(
   const hasStatus = "status" in record;
   const hasTitle = "yt_title" in record;
   const hasDescription = "yt_description" in record;
-  if (!hasStatus && !hasTitle && !hasDescription) {
+  const hasPrivacy = "yt_privacy" in record;
+  if (!hasStatus && !hasTitle && !hasDescription && !hasPrivacy) {
     return badRequest("Nothing to update.");
   }
   if (hasTitle) {
@@ -59,6 +70,16 @@ export async function PATCH(
   }
   if (hasStatus && typeof record.status !== "string") {
     return badRequest("status must be a string.");
+  }
+  if (hasPrivacy) {
+    if (
+      typeof record.yt_privacy !== "string" ||
+      !PRIVACY_VALUES.has(record.yt_privacy as ClipPrivacy)
+    ) {
+      return badRequest(
+        "yt_privacy must be public, unlisted, or private.",
+      );
+    }
   }
 
   let clip;
@@ -84,8 +105,22 @@ export async function PATCH(
       );
     }
     nextStatus = requested as ClipStatus;
-  } else if (clip.status !== "rendered") {
-    return badRequest("Only rendered clips can be edited.");
+  } else {
+    if (
+      (hasTitle || hasDescription) &&
+      clip.status !== "rendered"
+    ) {
+      return badRequest("Only rendered clips can be edited.");
+    }
+    if (
+      hasPrivacy &&
+      clip.status !== "rendered" &&
+      clip.status !== "approved"
+    ) {
+      return badRequest(
+        "Privacy can only be changed on rendered or approved clips.",
+      );
+    }
   }
 
   const nextTitle = hasTitle
@@ -94,12 +129,16 @@ export async function PATCH(
   const nextDescription = hasDescription
     ? (record.yt_description as string)
     : clip.yt_description;
+  const nextPrivacy = hasPrivacy
+    ? (record.yt_privacy as ClipPrivacy)
+    : clip.yt_privacy;
 
   try {
     const updated = await updateClip(id, clip.status, {
       status: nextStatus,
       yt_title: nextTitle,
       yt_description: nextDescription,
+      yt_privacy: nextPrivacy,
     });
     if (!updated) {
       return NextResponse.json(
@@ -115,5 +154,9 @@ export async function PATCH(
     );
   }
 
-  return NextResponse.json({ ok: true, status: nextStatus });
+  return NextResponse.json({
+    ok: true,
+    status: nextStatus,
+    yt_privacy: nextPrivacy,
+  });
 }

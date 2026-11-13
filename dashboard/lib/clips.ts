@@ -4,6 +4,7 @@ import { getSql } from "@/lib/db";
 import type {
   ApprovedClip,
   ClipForUpdate,
+  ClipPrivacy,
   ClipStatus,
   Counts,
   HistoryClip,
@@ -28,6 +29,10 @@ function asNumber(value: unknown): number | null {
   return Number.isFinite(number) ? number : null;
 }
 
+function asPrivacy(value: unknown): ClipPrivacy {
+  return value === "unlisted" || value === "private" ? value : "public";
+}
+
 function asIso(value: unknown): string | null {
   if (value instanceof Date) {
     return value.toISOString();
@@ -49,6 +54,7 @@ function toQueueClip(row: Row): QueueClip {
     thumb_url: asNullableString(row.thumb_url),
     yt_title: asNullableString(row.yt_title),
     yt_description: asNullableString(row.yt_description),
+    yt_privacy: asPrivacy(row.yt_privacy),
   };
 }
 
@@ -75,7 +81,7 @@ export async function getQueue(): Promise<QueueClip[]> {
     SELECT
       id, clip_title, clip_url, streamer_login, streamer_name, view_count,
       clip_created_at, reddit_score, blob_url, thumb_url, yt_title,
-      yt_description
+      yt_description, yt_privacy
     FROM clips
     WHERE status = 'rendered'
     ORDER BY
@@ -86,14 +92,13 @@ export async function getQueue(): Promise<QueueClip[]> {
   return rows.map(toQueueClip);
 }
 
-
 export async function getApprovedQueue(): Promise<ApprovedClip[]> {
   const sql = getSql();
   const rows = (await sql`
     SELECT
       id, clip_title, clip_url, streamer_login, streamer_name, view_count,
       clip_created_at, reddit_score, blob_url, thumb_url, yt_title,
-      yt_description, updated_at
+      yt_description, yt_privacy, updated_at
     FROM clips
     WHERE status = 'approved'
     ORDER BY updated_at ASC NULLS FIRST
@@ -127,7 +132,8 @@ export async function getHistory(): Promise<HistoryClip[]> {  const sql = getSql
     SELECT
       id, clip_title, clip_url, streamer_login, streamer_name, view_count,
       clip_created_at, reddit_score, blob_url, thumb_url, yt_title,
-      yt_description, status, youtube_video_id, error, updated_at
+      yt_description, yt_privacy, status, youtube_video_id, error,
+      updated_at
     FROM clips
     WHERE status IN ('uploaded', 'rejected', 'failed')
     ORDER BY updated_at DESC NULLS LAST
@@ -140,8 +146,8 @@ export async function getClip(id: string): Promise<ClipForUpdate | null> {
   const sql = getSql();
   const rows = (await sql`
     SELECT
-      id, status, streamer_login, yt_title, yt_description, blob_url,
-      thumb_url
+      id, status, streamer_login, yt_title, yt_description, yt_privacy,
+      blob_url, thumb_url
     FROM clips
     WHERE id = ${id}
     LIMIT 1
@@ -156,6 +162,7 @@ export async function getClip(id: string): Promise<ClipForUpdate | null> {
     streamer_login: asString(row.streamer_login),
     yt_title: asNullableString(row.yt_title),
     yt_description: asNullableString(row.yt_description),
+    yt_privacy: asPrivacy(row.yt_privacy),
     blob_url: asNullableString(row.blob_url),
     thumb_url: asNullableString(row.thumb_url),
   };
@@ -168,6 +175,7 @@ export async function updateClip(
     status: ClipStatus;
     yt_title: string | null;
     yt_description: string | null;
+    yt_privacy: ClipPrivacy;
   },
 ): Promise<boolean> {
   const sql = getSql();
@@ -177,6 +185,7 @@ export async function updateClip(
       status = ${values.status},
       yt_title = ${values.yt_title},
       yt_description = ${values.yt_description},
+      yt_privacy = ${values.yt_privacy},
       updated_at = now()
     WHERE id = ${id} AND status = ${expectedStatus}
     RETURNING id

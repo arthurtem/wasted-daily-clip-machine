@@ -3,19 +3,24 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import VisibilitySelect from "@/components/visibility-select";
+import UploadCompliance from "@/components/upload-compliance";
 import { formatCount } from "@/lib/format";
-import type { QueueClip } from "@/lib/types";
+import type { ClipPrivacy, QueueClip } from "@/lib/types";
 
 export default function ClipCard({
   clip,
   age,
+  channelName,
 }: {
   clip: QueueClip;
   age: string;
+  channelName: string;
 }) {
   const router = useRouter();
   const [title, setTitle] = useState(clip.yt_title ?? "");
   const [description, setDescription] = useState(clip.yt_description ?? "");
+  const [privacy, setPrivacy] = useState<ClipPrivacy>(clip.yt_privacy);
   const [pending, setPending] = useState<"approved" | "rejected" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,7 +30,12 @@ export default function ClipCard({
     try {
       const payload =
         status === "approved"
-          ? { status, yt_title: title, yt_description: description }
+          ? {
+              status,
+              yt_title: title,
+              yt_description: description,
+              yt_privacy: privacy,
+            }
           : { status };
       const response = await fetch(`/api/clips/${clip.id}`, {
         method: "PATCH",
@@ -130,6 +140,21 @@ export default function ClipCard({
           />
         </div>
 
+        <div className="space-y-1.5">
+          <label
+            htmlFor={`privacy-${clip.id}`}
+            className="text-xs font-medium"
+          >
+            YouTube visibility
+          </label>
+          <VisibilitySelect
+            id={`privacy-${clip.id}`}
+            value={privacy}
+            onChange={setPrivacy}
+            disabled={pending !== null}
+          />
+        </div>
+
         {error ? (
           <p
             role="alert"
@@ -138,6 +163,8 @@ export default function ClipCard({
             {error}
           </p>
         ) : null}
+
+        <UploadCompliance channelName={channelName} />
 
         <div className="flex flex-wrap gap-2">
           <button
