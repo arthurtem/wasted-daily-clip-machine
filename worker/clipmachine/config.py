@@ -59,7 +59,7 @@ class Settings:
     auto_render_top_n: int = 3
     auto_render_max_per_run: int = 5
     auto_render_max_per_day: int = 30
-    max_render_per_run: int = 5
+    max_render_per_run: int = 10
     render_clip_timeout_seconds: int = 600
     fetch_interval_minutes: int = 90
     reddit_enabled: bool = True
@@ -301,7 +301,7 @@ def load_settings(
         auto_render_top_n=optional_int("auto_render_top_n", 3),
         auto_render_max_per_run=optional_int("auto_render_max_per_run", 5, 1),
         auto_render_max_per_day=optional_int("auto_render_max_per_day", 30),
-        max_render_per_run=optional_int("max_render_per_run", 5, 1),
+        max_render_per_run=optional_int("max_render_per_run", 10, 1),
         render_clip_timeout_seconds=optional_int(
             "render_clip_timeout_seconds", 600, 30
         ),

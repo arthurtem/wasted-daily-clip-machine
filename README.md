@@ -96,7 +96,7 @@ Auto-render per fetch run:
   `auto_render_max_per_day` limit.
 
 `render` accepts `CLIP_IDS` (comma-separated) and caps each run at
-`max_render_per_run`. It marks `downloaded` only after the download completes
+`max_render_per_run` (10). It marks `downloaded` only after the download completes
 and `rendered` only after Blob uploads finish. A per-clip timeout marks the row
 `failed` with `timed out`; abandoned downloads are recovered at the next render
 run.
@@ -258,7 +258,7 @@ is dispatched as a separate `render.yml` run, so it appears in the recent-runs
 panel.
 
 `render.yml` renders selected clip ids or all new clips, subject to
-`max_render_per_run`. `upload.yml` runs every 15 minutes, uploads at most one
+`max_render_per_run` (10). `upload.yml` runs every 15 minutes, uploads at most one
 clip, and uses the 13:00–05:00 Brussels window and rolling 25/day cap. The
 upload gap is currently `0` for testing; set `min_minutes_between_uploads`
 back to a positive value for launch pacing. The preflight job is lightweight

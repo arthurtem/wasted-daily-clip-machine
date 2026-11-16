@@ -17,7 +17,7 @@ stale_after_hours: 36
 auto_render_top_n: 3
 auto_render_max_per_run: 5
 auto_render_max_per_day: 30
-max_render_per_run: 5
+max_render_per_run: 10
 render_clip_timeout_seconds: 600
 fetch_interval_minutes: 90
 reddit_enabled: true
