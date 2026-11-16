@@ -56,7 +56,7 @@ jobs:
     needs: preflight
     if: needs.preflight.outputs.eligible == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 120
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
@@ -94,5 +94,5 @@ jobs:
       - name: Install worker
         run: pip install -e "worker"
 
-      - name: Upload one approved clip
+      - name: Upload approved clips
         run: python -m clipmachine upload

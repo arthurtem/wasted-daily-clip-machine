@@ -55,7 +55,7 @@ python -m clipmachine init-db        # apply migrations (safe to run again)
 python -m clipmachine fetch          # import clips + Reddit metadata + auto-render ids
 python -m clipmachine render         # render selected/new clips (CLIP_IDS optional)
 python -m clipmachine calibrate kaicenat  # grid image to choose a facecam_box
-python -m clipmachine upload         # upload one approved clip (UPLOAD_MODE=api)
+python -m clipmachine upload         # upload approved clips (UPLOAD_MODE=api)
 python -m clipmachine reddit         # enrich/import clips from Reddit trending
 python -m clipmachine upload-gate    # lightweight upload preflight
 ```
@@ -258,8 +258,9 @@ is dispatched as a separate `render.yml` run, so it appears in the recent-runs
 panel.
 
 `render.yml` renders selected clip ids or all new clips, subject to
-`max_render_per_run` (10). `upload.yml` runs every 15 minutes, uploads at most one
-clip, and uses the 13:00–05:00 Brussels window and rolling 25/day cap. The
+`max_render_per_run` (10). `upload.yml` runs every 15 minutes, uploads up to
+`uploads_per_run` approved clips (10) sequentially, and uses the 13:00–05:00
+Brussels window and rolling 25/day cap. The
 upload gap is currently `0` for testing; set `min_minutes_between_uploads`
 back to a positive value for launch pacing. The preflight job is lightweight
 and checks expiry/window/cap/gap before installing the full worker.

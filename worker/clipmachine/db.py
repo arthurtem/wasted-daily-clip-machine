@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Mapping
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -466,3 +467,21 @@ def get_clip(clip_id: str) -> dict[str, Any] | None:
             "SELECT * FROM clips WHERE id = %s LIMIT 1", (clip_id,)
         ).fetchone()
     return dict(row) if row else None
+
+
+
+@contextmanager
+def upload_lock():
+    """Hold a Postgres advisory lock so upload jobs cannot overlap."""
+    conn = connect()
+    acquired = False
+    try:
+        row = conn.execute("SELECT pg_try_advisory_lock(783421)").fetchone()
+        acquired = bool(row and row[0])
+        yield acquired
+    finally:
+        try:
+            if acquired:
+                conn.execute("SELECT pg_advisory_unlock(783421)")
+        finally:
+            conn.close()

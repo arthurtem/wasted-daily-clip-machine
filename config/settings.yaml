@@ -5,7 +5,7 @@ clip_scope: "category"
 clip_language: "en"
 max_clips_per_run: 10
 max_clip_seconds: 60
-uploads_per_run: 1
+uploads_per_run: 10
 max_uploads_per_day: 25
 upload_window_start: "13:00"
 upload_window_end: "05:00"

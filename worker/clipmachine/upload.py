@@ -33,7 +33,7 @@ def _tags(clip: dict[str, Any]) -> list[str]:
     return [str(tag) for tag in value] if isinstance(value, list) else []
 
 
-def run_upload() -> None:
+def _run_upload() -> None:
     """Upload approved clips while UPLOAD_MODE=api, stopping on quota errors."""
     mode = os.environ.get("UPLOAD_MODE", "manual").strip().lower()
     if mode != "api":
@@ -95,7 +95,10 @@ def run_upload() -> None:
     reddit_priority_hours = int(
         getattr(settings, "reddit_priority_hours", 12)
     )
-    clips = db.get_approved_for_upload(1, reddit_priority_hours)
+    requested = max(1, int(getattr(settings, "uploads_per_run", 1)))
+    remaining = max(0, policy.max_uploads_per_day - uploaded_last_24h)
+    limit = max(1, min(requested, remaining))
+    clips = db.get_approved_for_upload(limit, reddit_priority_hours)
     if not clips:
         logger.info("no approved clips to upload")
         return
@@ -153,3 +156,16 @@ def run_upload() -> None:
             except Exception:
                 logger.warning("clip %s could not delete blob %s", clip_id, url)
         logger.info("clip %s upload complete video_id=%s", clip_id, video_id)
+
+
+
+def run_upload() -> None:
+    """Run the uploader, serializing uploads in GitHub Actions."""
+    if os.environ.get("GITHUB_ACTIONS", "").lower() == "true":
+        with db.upload_lock() as acquired:
+            if not acquired:
+                logger.info("another upload is already running; skipping")
+                return
+            _run_upload()
+        return
+    _run_upload()
