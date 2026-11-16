@@ -69,6 +69,7 @@ function toHistoryClip(row: Row): HistoryClip {
     youtube_video_id: asNullableString(row.youtube_video_id),
     error: asNullableString(row.error),
     updated_at: asIso(row.updated_at),
+    uploaded_at: asIso(row.uploaded_at),
   };
 }
 
@@ -105,7 +106,15 @@ export async function getApprovedQueue(): Promise<ApprovedClip[]> {
       yt_description, yt_privacy, updated_at
     FROM clips
     WHERE status = 'approved'
-    ORDER BY updated_at ASC NULLS FIRST
+    ORDER BY
+      CASE
+        WHEN reddit_score IS NOT NULL
+         AND clip_created_at >= now() - make_interval(hours => 12)
+        THEN 0
+        ELSE 1
+      END,
+      clip_created_at DESC NULLS LAST,
+      created_at DESC
   `) as Row[];
   return rows.map(toApprovedClip);
 }
@@ -179,10 +188,10 @@ export async function getHistory(): Promise<HistoryClip[]> {  const sql = getSql
       id, clip_title, clip_url, streamer_login, streamer_name, view_count,
       clip_created_at, reddit_score, blob_url, thumb_url, yt_title,
       yt_description, yt_privacy, status, youtube_video_id, error,
-      updated_at
+      updated_at, uploaded_at
     FROM clips
     WHERE status IN ('uploaded', 'rejected', 'failed')
-    ORDER BY updated_at DESC NULLS LAST
+    ORDER BY COALESCE(uploaded_at, updated_at) DESC NULLS LAST
     LIMIT 200
   `) as Row[];
   return rows.map(toHistoryClip);

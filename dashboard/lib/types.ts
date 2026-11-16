@@ -32,6 +32,7 @@ export interface HistoryClip extends QueueClip {
   youtube_video_id: string | null;
   error: string | null;
   updated_at: string | null;
+  uploaded_at: string | null;
 }
 
 export interface ApprovedClip extends QueueClip {
