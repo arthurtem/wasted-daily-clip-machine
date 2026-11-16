@@ -478,11 +478,14 @@ def advisory_lock(key: int):
     try:
         row = conn.execute("SELECT pg_try_advisory_lock(%s)", (key,)).fetchone()
         acquired = bool(row and row[0])
+        if acquired:
+            conn.commit()
         yield acquired
     finally:
         try:
             if acquired:
                 conn.execute("SELECT pg_advisory_unlock(%s)", (key,))
+                conn.commit()
         finally:
             conn.close()
 
@@ -495,11 +498,14 @@ def upload_lock():
     try:
         row = conn.execute("SELECT pg_try_advisory_lock(783421)").fetchone()
         acquired = bool(row and row[0])
+        if acquired:
+            conn.commit()
         yield acquired
     finally:
         try:
             if acquired:
                 conn.execute("SELECT pg_advisory_unlock(783421)")
+                conn.commit()
         finally:
             conn.close()
 
