@@ -259,11 +259,10 @@ panel.
 
 `render.yml` renders selected clip ids or all new clips, subject to
 `max_render_per_run`. `upload.yml` runs every 15 minutes, uploads at most one
-clip, and uses the 13:00–05:00 Brussels window, rolling 25/day cap, and a
-30-minute gap. (A 30-minute gap is deliberate: with 15-minute cron slots it
-keeps 25/day attainable; 35 minutes would make the effective cadence 45
-minutes and cap the day at about 21.) The preflight job is lightweight and
-checks expiry/window/cap/gap before installing the full worker.
+clip, and uses the 13:00–05:00 Brussels window and rolling 25/day cap. The
+upload gap is currently `0` for testing; set `min_minutes_between_uploads`
+back to a positive value for launch pacing. The preflight job is lightweight
+and checks expiry/window/cap/gap before installing the full worker.
 
 Upload order is:
 1. Clips with `reddit_score` and `clip_created_at` within
@@ -302,7 +301,7 @@ Before using the workflows:
    repository only and use it as `GITHUB_TOKEN`.
 5. Add `UPLOAD_MAX_PER_DAY=25`, `UPLOAD_WINDOW_START=13:00`,
    `UPLOAD_WINDOW_END=05:00`, `UPLOAD_TIMEZONE=Europe/Brussels`,
-   `UPLOAD_MIN_GAP_MINUTES=30`, `UPLOAD_SLOT_MINUTES=15`,
+   `UPLOAD_MIN_GAP_MINUTES=0`, `UPLOAD_SLOT_MINUTES=15`,
    `DEFAULT_GAME_NAME=Grand Theft Auto VI`, and `DEFAULT_MIN_VIEWS=150` to
    Vercel so the header and fetch defaults match the worker config.
 6. Push to `main`; Vercel deploys automatically. Add the matching GitHub

@@ -10,8 +10,8 @@ max_uploads_per_day: 25
 upload_window_start: "13:00"
 upload_window_end: "05:00"
 upload_timezone: "Europe/Brussels"
-# 30 minutes keeps 25/day attainable on the 15-minute cron.
-min_minutes_between_uploads: 30
+# Testing mode: no gap between uploads.
+min_minutes_between_uploads: 0
 reddit_priority_hours: 12
 stale_after_hours: 36
 auto_render_top_n: 3

@@ -53,7 +53,7 @@ class Settings:
     upload_window_start: str = "13:00"
     upload_window_end: str = "05:00"
     upload_timezone: str = "Europe/Brussels"
-    min_minutes_between_uploads: int = 30
+    min_minutes_between_uploads: int = 0
     reddit_priority_hours: int = 12
     stale_after_hours: int = 36
     auto_render_top_n: int = 3
@@ -294,7 +294,7 @@ def load_settings(
         upload_window_end=time_setting("upload_window_end", "05:00"),
         upload_timezone=upload_timezone.strip(),
         min_minutes_between_uploads=optional_int(
-            "min_minutes_between_uploads", 30
+            "min_minutes_between_uploads", 0
         ),
         reddit_priority_hours=optional_int("reddit_priority_hours", 12),
         stale_after_hours=optional_int("stale_after_hours", 36, 1),

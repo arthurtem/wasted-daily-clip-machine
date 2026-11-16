@@ -12,7 +12,7 @@ const DEFAULT_POLICY: UploadPolicy = {
   windowStart: "13:00",
   windowEnd: "05:00",
   timezone: "Europe/Brussels",
-  minGapMinutes: 30,
+  minGapMinutes: 0,
   slotMinutes: 15,
 };
 

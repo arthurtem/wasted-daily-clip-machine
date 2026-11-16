@@ -37,7 +37,7 @@ def policy_from_settings(settings: object) -> UploadPolicy:
             getattr(settings, "upload_timezone", "Europe/Brussels")
         ),
         min_minutes_between_uploads=int(
-            getattr(settings, "min_minutes_between_uploads", 30)
+            getattr(settings, "min_minutes_between_uploads", 0)
         ),
     )
 
