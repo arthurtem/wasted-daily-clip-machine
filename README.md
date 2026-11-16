@@ -71,6 +71,16 @@ Twitch category names verified for launch:
 
 Switching game/min views is configuration/environment only; no code change.
 
+The fetch panel has two scopes:
+- **Category top clips** (default): all clips in the game category over the last
+  24 hours via Helix `game_id`, sorted by Twitch views. This matches Twitch's
+  category clips page without scraping it.
+- **Selected streamers**: the original per-streamer fetch.
+
+Category mode defaults to `clip_language: en`. Global GTA V clips are currently
+dominated by Japanese GTA RP, so English keeps the channel/audio audience
+consistent. Set `clip_language: all` to ingest every language.
+
 
 ## Import inbox, auto-render, and freshness
 

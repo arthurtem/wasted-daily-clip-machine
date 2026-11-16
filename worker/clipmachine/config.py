@@ -45,6 +45,8 @@ class Settings:
     max_clips_per_run: int
     max_clip_seconds: int
     uploads_per_run: int
+    clip_scope: str = "streamers"
+    clip_language: str = "en"
     refine_cam_edges: bool = True
     skip_burned_captions: bool = True
     max_uploads_per_day: int = 25
@@ -258,6 +260,15 @@ def load_settings(
             raise ConfigError(f"{path}: {key} must be an HH:MM string")
         return value
 
+    clip_scope = data.get("clip_scope", "streamers")
+    if clip_scope not in {"category", "streamers"}:
+        raise ConfigError(
+            f"{path}: clip_scope must be 'category' or 'streamers'"
+        )
+    clip_language = data.get("clip_language", "en")
+    if not isinstance(clip_language, str) or not clip_language.strip():
+        raise ConfigError(f"{path}: clip_language must be a language or 'all'")
+
     reddit_subreddits = data.get(
         "reddit_subreddits", ["LivestreamFail", "GTA6"]
     )
@@ -276,6 +287,8 @@ def load_settings(
         game_name=game_name.strip(),
         refine_cam_edges=refine_cam_edges,
         skip_burned_captions=skip_burned_captions,
+        clip_scope=clip_scope,
+        clip_language=clip_language.strip().lower(),
         max_uploads_per_day=optional_int("max_uploads_per_day", 25),
         upload_window_start=time_setting("upload_window_start", "13:00"),
         upload_window_end=time_setting("upload_window_end", "05:00"),

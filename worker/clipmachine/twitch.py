@@ -273,3 +273,35 @@ class TwitchClient:
             clips.extend(payload.get("data") or [])
         logger.info("clip lookup by id requested=%d found=%d", len(unique), len(clips))
         return clips
+
+
+    def get_game_clips(
+        self, game_id: str, started_at: datetime, ended_at: datetime
+    ) -> list[dict[str, Any]]:
+        """Return clips for a whole game category in a time window."""
+        clips: list[dict[str, Any]] = []
+        cursor: str | None = None
+        seen_cursors: set[str] = set()
+        while True:
+            params: dict[str, Any] = {
+                "game_id": game_id,
+                "started_at": _rfc3339(started_at),
+                "ended_at": _rfc3339(ended_at),
+                "first": CLIPS_PAGE_SIZE,
+            }
+            if cursor:
+                params["after"] = cursor
+            payload = self._helix_get("/clips", params)
+            clips.extend(payload.get("data") or [])
+            cursor = (payload.get("pagination") or {}).get("cursor")
+            if not cursor or cursor in seen_cursors:
+                break
+            seen_cursors.add(cursor)
+        logger.info(
+            "category clip fetch game_id=%s window=%s..%s clips=%d",
+            game_id,
+            _rfc3339(started_at),
+            _rfc3339(ended_at),
+            len(clips),
+        )
+        return clips

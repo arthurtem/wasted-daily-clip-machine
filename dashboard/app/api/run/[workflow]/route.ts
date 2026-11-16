@@ -143,6 +143,13 @@ export async function POST(
             );
           }
         }
+        const scope = record.scope;
+        if (scope !== undefined && scope !== "category" && scope !== "streamers") {
+          return NextResponse.json(
+            { error: "scope must be category or streamers." },
+            { status: 400 },
+          );
+        }
         const streamers = record.streamers;
         if (streamers !== undefined) {
           if (
@@ -159,6 +166,9 @@ export async function POST(
         }
         if (typeof game === "string" && game.trim()) {
           inputs.game_name = game.trim();
+        }
+        if (typeof scope === "string") {
+          inputs.scope = scope;
         }
         if (typeof minViews === "number") {
           inputs.min_views = String(minViews);

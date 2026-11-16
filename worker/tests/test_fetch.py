@@ -31,6 +31,7 @@ class FakeClient:
         self.requested_logins: list[str] = []
         self.requested_user_lookups: list[str] = []
         self.clips_calls: list[str] = []
+        self.game_clips: list[dict[str, Any]] = []
 
     def get_game_id(self, name: str) -> str:
         """Return the canned game id."""
@@ -58,6 +59,12 @@ class FakeClient:
         """Record the broadcaster and return its canned clips."""
         self.clips_calls.append(broadcaster_id)
         return self.clips_by_broadcaster.get(broadcaster_id, [])
+
+    def get_game_clips(
+        self, game_id: str, started_at: datetime, ended_at: datetime
+    ) -> list[dict[str, Any]]:
+        """Return canned category clips."""
+        return self.game_clips
 
 
 def make_config(
@@ -311,3 +318,70 @@ def test_selected_streamer_outside_config_uses_twitch_name(
     assert client.requested_logins == ["newstreamer"]
     assert result.new_clips == 1
     assert upserts[0].streamer_name == "New Streamer"
+
+
+def test_category_scope_filters_language_and_resolves_logins(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Category mode ignores streamers, filters language, and keeps top views."""
+    streamers = [Streamer(name="Kai Cenat", twitch_login="kaicenat")]
+    client = FakeClient(
+        game_id="gta5",
+        user_ids={},
+        clips_by_broadcaster={},
+    )
+    client.game_clips = [
+        {
+            "id": "en-high",
+            "url": "https://www.twitch.tv/englishguy/clip/en-high",
+            "title": "English high",
+            "view_count": 5000,
+            "duration": 30,
+            "game_id": "gta5",
+            "language": "en",
+            "created_at": "2026-11-13T10:00:00Z",
+            "broadcaster_id": "2002",
+            "broadcaster_name": "EnglishGuy",
+        },
+        {
+            "id": "ja-high",
+            "url": "https://www.twitch.tv/japaneseguy/clip/ja-high",
+            "title": "Japanese high",
+            "view_count": 9000,
+            "duration": 30,
+            "game_id": "gta5",
+            "language": "ja",
+            "created_at": "2026-11-13T10:00:00Z",
+            "broadcaster_id": "2003",
+            "broadcaster_name": "JapaneseGuy",
+        },
+        {
+            "id": "en-low",
+            "url": "https://www.twitch.tv/englishguy/clip/en-low",
+            "title": "English low",
+            "view_count": 3000,
+            "duration": 30,
+            "game_id": "gta5",
+            "language": "en",
+            "created_at": "2026-11-13T10:00:00Z",
+            "broadcaster_id": "2002",
+            "broadcaster_name": "EnglishGuy",
+        },
+    ]
+    upserts = install(
+        monkeypatch,
+        make_config(
+            streamers,
+            clip_scope="category",
+            clip_language="en",
+            min_views=0,
+        ),
+        client,
+    )
+
+    result = fetch.run_fetch()
+
+    assert [clip.id for clip in upserts] == ["en-high", "en-low"]
+    assert upserts[0].streamer_login == "englishguy"
+    assert result.streamers_checked == 1
+    assert result.clips_found == 2

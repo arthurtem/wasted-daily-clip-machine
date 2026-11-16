@@ -8,6 +8,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from clipmachine import db
 from clipmachine.config import Settings, Streamer, load_config
@@ -62,6 +63,28 @@ def _keep(clip: dict[str, Any], game_id: str, settings: Settings) -> bool:
         and _as_int(clip.get("view_count")) >= settings.min_views
         and _as_float(clip.get("duration")) <= settings.max_clip_seconds
     )
+
+
+def _clip_login(clip: dict[str, Any]) -> str | None:
+    """Extract the Twitch login from a clip URL or broadcaster name."""
+    url = clip.get("url")
+    if isinstance(url, str):
+        path = [part for part in urlparse(url).path.split("/") if part]
+        if len(path) >= 2 and path[1] == "clip":
+            return path[0].lower()
+    name = clip.get("broadcaster_name")
+    if isinstance(name, str) and name.strip():
+        return name.strip().lower()
+    return None
+
+
+def _language_ok(settings: Settings, clip: dict[str, Any]) -> bool:
+    """Return whether a clip matches the requested category language."""
+    wanted = settings.clip_language.strip().lower()
+    if wanted in {"", "all"}:
+        return True
+    language = str(clip.get("language") or "").strip().lower()
+    return language == wanted
 
 
 def _to_new_clip(streamer: Streamer, clip: dict[str, Any]) -> NewClip | None:
@@ -173,6 +196,7 @@ def run_fetch(config_directory: Path | None = None) -> FetchResult:
     settings = config.settings
     if _scheduled_interval_skip(settings):
         return FetchResult(0, 0, 0, 0, [])
+
     min_views_override = os.environ.get("MIN_VIEWS", "").strip()
     if min_views_override:
         try:
@@ -182,99 +206,143 @@ def run_fetch(config_directory: Path | None = None) -> FetchResult:
         if min_views < 0:
             raise ValueError("MIN_VIEWS must be >= 0")
         settings = replace(settings, min_views=min_views)
+
+    scope_override = os.environ.get("CLIP_SCOPE", "").strip().lower()
+    if scope_override:
+        if scope_override not in {"category", "streamers"}:
+            raise ValueError("CLIP_SCOPE must be category or streamers")
+        settings = replace(settings, clip_scope=scope_override)
+
     client = TwitchClient()
     game_id = client.get_game_id(settings.game_name)
     logger.info(
-        "fetch filters: game=%s min_views=%d max_clip_seconds=%d "
-        "lookback_hours=%d",
+        "fetch filters: scope=%s language=%s game=%s min_views=%d "
+        "max_clip_seconds=%d lookback_hours=%d",
+        settings.clip_scope,
+        settings.clip_language,
         settings.game_name,
         settings.min_views,
         settings.max_clip_seconds,
         settings.lookback_hours,
     )
 
-    selected_logins = list(
-        dict.fromkeys(
-            login.strip().lower()
-            for login in os.environ.get("STREAMERS", "").split(",")
-            if login.strip()
-        )
-    )
+    ended_at = datetime.now(timezone.utc)
+    started_at = ended_at - timedelta(hours=settings.lookback_hours)
     config_by_login = {
         streamer.twitch_login.lower(): streamer
         for streamer in config.streamers
     }
-    if selected_logins:
-        unknown = [
-            login for login in selected_logins if login not in config_by_login
-        ]
-        user_details: dict[str, dict[str, str]] = {}
-        if unknown:
-            try:
-                user_details = client.get_users(unknown)
-            except TwitchError as exc:
-                logger.warning(
-                    "could not look up selected streamers: %s", exc
-                )
-        enabled = []
-        for login in selected_logins:
-            configured = config_by_login.get(login)
-            if configured is not None:
-                enabled.append(configured)
-                continue
-            display_name = (
-                user_details.get(login, {}).get("display_name") or login
-            )
-            enabled.append(
-                Streamer(name=display_name, twitch_login=login)
-            )
-    else:
-        enabled = [
-            streamer for streamer in config.streamers if streamer.enabled
-        ]
-    user_ids = client.get_user_ids(
-        [streamer.twitch_login for streamer in enabled]
-    )
-
-    ended_at = datetime.now(timezone.utc)
-    started_at = ended_at - timedelta(hours=settings.lookback_hours)
-
+    user_ids: dict[str, str] = {}
     candidates: list[tuple[Streamer, dict[str, Any]]] = []
-    for streamer in enabled:
-        broadcaster_id = user_ids.get(streamer.twitch_login.lower())
-        if broadcaster_id is None:
-            logger.warning(
-                "clip fetch streamer=%s skipped: Twitch user not found",
-                streamer.twitch_login,
-            )
-            continue
-        clips = client.get_clips(broadcaster_id, started_at, ended_at)
-        kept = [clip for clip in clips if _keep(clip, game_id, settings)]
-        wrong_game = sum(
-            1 for clip in clips if clip.get("game_id") != game_id
-        )
-        low_views = sum(
-            1
-            for clip in clips
-            if _as_int(clip.get("view_count")) < settings.min_views
-        )
-        too_long = sum(
-            1
-            for clip in clips
-            if _as_float(clip.get("duration"))
-            > settings.max_clip_seconds
-        )
+
+    if settings.clip_scope == "category":
+        raw_clips = client.get_game_clips(game_id, started_at, ended_at)
+        rejected_language = 0
+        streamer_by_login: dict[str, Streamer] = {}
+        all_logins: set[str] = set()
+        for clip in raw_clips:
+            if not _language_ok(settings, clip):
+                rejected_language += 1
+                continue
+            if not _keep(clip, game_id, settings):
+                continue
+            login = _clip_login(clip)
+            if not login:
+                continue
+            all_logins.add(login)
+            streamer = config_by_login.get(login)
+            if streamer is None:
+                streamer = Streamer(
+                    name=str(clip.get("broadcaster_name") or login),
+                    twitch_login=login,
+                )
+                streamer_by_login.setdefault(login, streamer)
+            broadcaster_id = clip.get("broadcaster_id")
+            if isinstance(broadcaster_id, str) and broadcaster_id:
+                user_ids[login] = broadcaster_id
+            candidates.append((streamer, clip))
         logger.info(
-            "clip fetch streamer=%s clips=%d kept=%d rejected_game=%d "
-            "rejected_views=%d rejected_duration=%d",
-            streamer.twitch_login,
-            len(clips),
-            len(kept),
-            wrong_game,
-            low_views,
-            too_long,
+            "category fetch summary: found=%d kept=%d rejected_language=%d "
+            "streamers=%d",
+            len(raw_clips),
+            len(candidates),
+            rejected_language,
+            len(streamer_by_login),
         )
-        candidates.extend((streamer, clip) for clip in kept)
+        streamers_checked = len(streamer_by_login)
+    else:
+        selected_logins = list(
+            dict.fromkeys(
+                login.strip().lower()
+                for login in os.environ.get("STREAMERS", "").split(",")
+                if login.strip()
+            )
+        )
+        if selected_logins:
+            unknown = [
+                login for login in selected_logins if login not in config_by_login
+            ]
+            user_details: dict[str, dict[str, str]] = {}
+            if unknown:
+                try:
+                    user_details = client.get_users(unknown)
+                except TwitchError as exc:
+                    logger.warning(
+                        "could not look up selected streamers: %s", exc
+                    )
+            enabled = []
+            for login in selected_logins:
+                configured = config_by_login.get(login)
+                if configured is not None:
+                    enabled.append(configured)
+                    continue
+                display_name = (
+                    user_details.get(login, {}).get("display_name") or login
+                )
+                enabled.append(Streamer(name=display_name, twitch_login=login))
+        else:
+            enabled = [
+                streamer for streamer in config.streamers if streamer.enabled
+            ]
+        user_ids = client.get_user_ids(
+            [streamer.twitch_login for streamer in enabled]
+        )
+        for streamer in enabled:
+            broadcaster_id = user_ids.get(streamer.twitch_login.lower())
+            if broadcaster_id is None:
+                logger.warning(
+                    "clip fetch streamer=%s skipped: Twitch user not found",
+                    streamer.twitch_login,
+                )
+                continue
+            clips = client.get_clips(broadcaster_id, started_at, ended_at)
+            kept = [clip for clip in clips if _keep(clip, game_id, settings)]
+            wrong_game = sum(
+                1 for clip in clips if clip.get("game_id") != game_id
+            )
+            low_views = sum(
+                1
+                for clip in clips
+                if _as_int(clip.get("view_count")) < settings.min_views
+            )
+            too_long = sum(
+                1
+                for clip in clips
+                if _as_float(clip.get("duration"))
+                > settings.max_clip_seconds
+            )
+            logger.info(
+                "clip fetch streamer=%s clips=%d kept=%d rejected_game=%d "
+                "rejected_views=%d rejected_duration=%d",
+                streamer.twitch_login,
+                len(clips),
+                len(kept),
+                wrong_game,
+                low_views,
+                too_long,
+            )
+            candidates.extend((streamer, clip) for clip in kept)
+        streamers_checked = len(enabled)
 
     candidates.sort(
         key=lambda item: _as_int(item[1].get("view_count")), reverse=True
@@ -312,9 +380,7 @@ def run_fetch(config_directory: Path | None = None) -> FetchResult:
     except Exception:
         logger.exception("Reddit discovery failed; continuing with Twitch only")
 
-    auto_ids = _select_auto_render(
-        settings, [*inserted_ids, *reddit_ids]
-    )
+    auto_ids = _select_auto_render(settings, [*inserted_ids, *reddit_ids])
 
     if os.environ.get("GITHUB_EVENT_NAME"):
         try:
@@ -323,9 +389,10 @@ def run_fetch(config_directory: Path | None = None) -> FetchResult:
             logger.exception("could not record fetch state")
 
     logger.info(
-        "fetch summary: streamers=%d clips_found=%d selected=%d new=%d "
-        "min_views=%d auto_render=%d",
-        len(enabled),
+        "fetch summary: scope=%s streamers=%d clips_found=%d selected=%d "
+        "new=%d min_views=%d auto_render=%d",
+        settings.clip_scope,
+        streamers_checked,
         len(candidates),
         len(selected),
         new_clips,
@@ -333,7 +400,7 @@ def run_fetch(config_directory: Path | None = None) -> FetchResult:
         len(auto_ids),
     )
     return FetchResult(
-        streamers_checked=len(enabled),
+        streamers_checked=streamers_checked,
         clips_found=len(candidates),
         selected=len(selected),
         new_clips=new_clips,

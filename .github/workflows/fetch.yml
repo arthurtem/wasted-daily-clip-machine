@@ -15,6 +15,10 @@ on:
         description: Minimum clip views (blank = config value)
         required: false
         type: string
+      scope:
+        description: category or streamers (blank = config value)
+        required: false
+        type: string
   schedule:
     - cron: "*/30 * * * *"
 
@@ -40,6 +44,7 @@ jobs:
       GAME_NAME: ${{ inputs.game_name || secrets.GAME_NAME }}
       STREAMERS: ${{ inputs.streamers }}
       MIN_VIEWS: ${{ inputs.min_views }}
+      CLIP_SCOPE: ${{ inputs.scope }}
       FORCE_FETCH: ${{ github.event_name == 'workflow_dispatch' && '1' || '0' }}
       AUTO_RENDER_IDS_FILE: auto_render_ids.txt
     steps:

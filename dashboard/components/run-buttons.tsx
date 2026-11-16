@@ -37,6 +37,7 @@ export default function RunButtons({
   const [message, setMessage] = useState<RunMessage | null>(null);
   const [gameName, setGameName] = useState(defaultGame);
   const [minViews, setMinViews] = useState(defaultMinViews);
+  const [scope, setScope] = useState<"category" | "streamers">("category");
   const [selectedStreamers, setSelectedStreamers] = useState<StreamerOption[]>(
     () => [...STREAMER_OPTIONS],
   );
@@ -54,6 +55,7 @@ export default function RunButtons({
           ? {
               game_name: gameName.trim(),
               min_views: minViews,
+              scope,
               streamers: selectedStreamers.map(
                 (streamer) => streamer.login,
               ),
@@ -77,8 +79,10 @@ export default function RunButtons({
       const status = data?.run?.status;
       const fetchSummary =
         workflow === "fetch"
-          ? ` for ${gameName.trim()} / min ${minViews} views / ` +
-            `${selectedStreamers.map((streamer) => streamer.login).join(", ")}`
+          ? scope === "category"
+            ? ` for ${gameName.trim()} / category top clips / min ${minViews} views`
+            : ` for ${gameName.trim()} / min ${minViews} views / ` +
+              `${selectedStreamers.map((streamer) => streamer.login).join(", ")}`
           : "";
       setMessage({
         text:
@@ -101,15 +105,44 @@ export default function RunButtons({
   }
 
   const canFetch =
-    selectedStreamers.length > 0 &&
     gameName.trim().length > 0 &&
     Number.isInteger(minViews) &&
-    minViews >= 0;
+    minViews >= 0 &&
+    (scope === "category" || selectedStreamers.length > 0);
 
   return (
     <div className="space-y-3">
       {showPipeline ? (
         <div className="space-y-3 rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setScope("category")}
+              className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                scope === "category"
+                  ? "bg-yellow-400 text-zinc-950"
+                  : "border border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+              }`}
+            >
+              Category top clips
+            </button>
+            <button
+              type="button"
+              onClick={() => setScope("streamers")}
+              className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                scope === "streamers"
+                  ? "bg-yellow-400 text-zinc-950"
+                  : "border border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+              }`}
+            >
+              Selected streamers
+            </button>
+          </div>
+          <p className="text-[11px] text-zinc-500">
+            {scope === "category"
+              ? "All Twitch clips in this game category from the last 24h, filtered to English by default."
+              : "Only clips from the streamers selected below."}
+          </p>
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem]">
             <div className="space-y-1.5">
               <label
@@ -154,10 +187,12 @@ export default function RunButtons({
             </p>
           ) : null}
 
-          <StreamerSearch
-            selected={selectedStreamers}
-            onChange={setSelectedStreamers}
-          />
+          {scope === "streamers" ? (
+            <StreamerSearch
+              selected={selectedStreamers}
+              onChange={setSelectedStreamers}
+            />
+          ) : null}
 
           <div className="flex flex-wrap gap-2">
             <button
@@ -181,7 +216,9 @@ export default function RunButtons({
           </div>
           {!canFetch ? (
             <p className="text-xs text-amber-300">
-              Select at least one streamer and a game.
+              {scope === "streamers"
+                ? "Select at least one streamer and a game."
+                : "Choose a game."}
             </p>
           ) : null}
         </div>
