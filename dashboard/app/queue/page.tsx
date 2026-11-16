@@ -7,6 +7,7 @@ import { getSessionRole } from "@/lib/auth";
 import { getCounts, getQueue } from "@/lib/clips";
 import { hasYouTubeConnection } from "@/lib/youtube-connections";
 import { formatAge } from "@/lib/format";
+import { DEFAULT_GAME_NAME, DEFAULT_MIN_VIEWS } from "@/lib/streamer-options";
 import type { UploadMode } from "@/lib/types";
 import { getRecentWorkflowRuns } from "@/lib/workflow-runs";
 
@@ -24,12 +25,8 @@ export default async function QueuePage() {
   const uploadMode: UploadMode =
     process.env.UPLOAD_MODE === "api" ? "api" : "manual";
   const channelName = process.env.CHANNEL_NAME?.trim() || "YouTube";
-  const defaultGame =
-    process.env.DEFAULT_GAME_NAME?.trim() || "Grand Theft Auto VI";
-  const parsedMinViews = Number(process.env.DEFAULT_MIN_VIEWS ?? "150");
-  const defaultMinViews = Number.isInteger(parsedMinViews)
-    ? parsedMinViews
-    : 150;
+  const defaultGame = DEFAULT_GAME_NAME;
+  const defaultMinViews = DEFAULT_MIN_VIEWS;
 
   return (
     <main className="mx-auto max-w-[1700px] space-y-5 px-4 py-6 sm:px-6 lg:py-8">

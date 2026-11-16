@@ -46,7 +46,7 @@ export default function CountsRow({ counts }: { counts: Counts }) {
         ))}
       </dl>
       <p className="text-[11px] text-zinc-500">
-        Upload window {counts.uploadWindowStart}–{counts.uploadWindowEnd} Brussels
+        Uploads 24/7 · next slot every 10 minutes
       </p>
     </div>
   );

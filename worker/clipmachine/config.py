@@ -62,6 +62,14 @@ class Settings:
     max_render_per_run: int = 10
     render_clip_timeout_seconds: int = 600
     fetch_interval_minutes: int = 90
+    auto_approve: bool = False
+    automation_enabled: bool = False
+    automation_launch_date: str = "2026-11-19"
+    automation_start_upload_cap: int = 75
+    automation_ramp_per_day: int = 10
+    automation_max_upload_cap: int = 100
+    automation_fetch_limit: int = 20
+    automation_render_limit: int = 20
     reddit_enabled: bool = True
     reddit_subreddits: tuple[str, ...] = ("LivestreamFail", "GTA6")
     reddit_lookback_hours: int = 24
@@ -282,6 +290,15 @@ def load_settings(
     upload_timezone = data.get("upload_timezone", "Europe/Brussels")
     if not isinstance(upload_timezone, str) or not upload_timezone.strip():
         raise ConfigError(f"{path}: upload_timezone must be a non-empty string")
+    auto_approve = data.get("auto_approve", False)
+    if not isinstance(auto_approve, bool):
+        raise ConfigError(f"{path}: auto_approve must be true or false")
+    automation_enabled = data.get("automation_enabled", False)
+    if not isinstance(automation_enabled, bool):
+        raise ConfigError(f"{path}: automation_enabled must be true or false")
+    automation_launch_date = data.get("automation_launch_date", "2026-11-19")
+    if not isinstance(automation_launch_date, str):
+        raise ConfigError(f"{path}: automation_launch_date must be a date string")
 
     return Settings(
         game_name=game_name.strip(),
@@ -306,6 +323,20 @@ def load_settings(
             "render_clip_timeout_seconds", 600, 30
         ),
         fetch_interval_minutes=optional_int("fetch_interval_minutes", 90),
+        auto_approve=auto_approve,
+        automation_enabled=automation_enabled,
+        automation_launch_date=automation_launch_date,
+        automation_start_upload_cap=optional_int(
+            "automation_start_upload_cap", 75
+        ),
+        automation_ramp_per_day=optional_int("automation_ramp_per_day", 10),
+        automation_max_upload_cap=optional_int(
+            "automation_max_upload_cap", 100, 1
+        ),
+        automation_fetch_limit=optional_int("automation_fetch_limit", 20, 1),
+        automation_render_limit=optional_int(
+            "automation_render_limit", 20, 1
+        ),
         reddit_enabled=reddit_enabled,
         reddit_subreddits=tuple(item.strip() for item in reddit_subreddits),
         reddit_lookback_hours=optional_int("reddit_lookback_hours", 24, 1),

@@ -2,6 +2,7 @@ import "server-only";
 
 import { getSql } from "@/lib/db";
 import { nextAllowedUpload, uploadPolicy } from "@/lib/upload-policy";
+import { getAutomationState } from "@/lib/automation";
 import type {
   ApprovedClip,
   ClipForUpdate,
@@ -144,7 +145,11 @@ export async function getCounts(): Promise<Counts> {
     FROM clips
   `) as Row[];
   const row = rows[0] ?? {};
-  const policy = uploadPolicy();
+  const automation = await getAutomationState();
+  const policy = {
+    ...uploadPolicy(),
+    maxUploadsPerDay: automation.uploadCap,
+  };
   const uploadedLast24h = asNumber(row.uploaded_last_24h) ?? 0;
   const latest = row.latest_upload ? new Date(asIso(row.latest_upload) ?? "") : null;
   const oldest = row.oldest_upload ? new Date(asIso(row.oldest_upload) ?? "") : null;

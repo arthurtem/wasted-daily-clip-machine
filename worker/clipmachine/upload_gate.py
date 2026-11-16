@@ -5,10 +5,11 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from clipmachine import db
+from clipmachine import automation, db
 from clipmachine.config import load_config
 from clipmachine.maintenance import expire_stale
 from clipmachine.upload_policy import inside_window, policy_from_settings
@@ -20,13 +21,16 @@ def run_gate() -> tuple[bool, str]:
     """Return whether an upload job should run, plus a reason."""
     config = load_config()
     settings = config.settings
+    limits = automation.current_limits(settings)
     expire_stale(settings.stale_after_hours)
 
     mode = os.environ.get("UPLOAD_MODE", "manual").strip().lower()
     if mode != "api":
         return False, "manual mode"
 
-    policy = policy_from_settings(settings)
+    policy = replace(
+        policy_from_settings(settings), max_uploads_per_day=limits.upload_cap
+    )
     now = datetime.now(timezone.utc)
     if not inside_window(now, policy):
         return False, "outside upload window"

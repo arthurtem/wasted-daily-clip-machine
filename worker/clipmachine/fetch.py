@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from clipmachine import db
+from clipmachine import automation, db
 from clipmachine.config import Settings, Streamer, load_config
 from clipmachine.models import NewClip
 from clipmachine.reddit import run_reddit
@@ -135,59 +135,20 @@ def _scheduled_interval_skip(settings: Settings) -> bool:
     return False
 
 
-def _select_auto_render(
-    settings: Settings, candidate_ids: list[str]
-) -> list[str]:
-    """Choose the hybrid auto-render set and write it for the workflow."""
+def _select_auto_render(settings: Settings, candidate_ids: list[str]) -> list[str]:
+    """Queue every still-new clip for the next automatic render batch."""
     auto_file = os.environ.get("AUTO_RENDER_IDS_FILE", "").strip()
     if not auto_file:
         return []
-    unique_ids = list(dict.fromkeys(candidate_ids))
-    if not unique_ids:
-        Path(auto_file).write_text("", encoding="utf-8")
-        return []
-    rows = db.get_new_clips_by_ids(unique_ids)
-    if not rows:
-        Path(auto_file).write_text("", encoding="utf-8")
-        return []
-    since = datetime.now(timezone.utc) - timedelta(hours=24)
-    used = db.count_auto_rendered_since(since)
-    remaining = max(0, settings.auto_render_max_per_day - used)
-    if remaining == 0:
-        logger.info("auto render skipped: daily cap %d reached", settings.auto_render_max_per_day)
-        Path(auto_file).write_text("", encoding="utf-8")
-        return []
-
-    reddit_rows = sorted(
-        [row for row in rows if row.get("reddit_score") is not None],
-        key=lambda row: (
-            _as_int(row.get("reddit_score")),
-            row.get("clip_created_at") or datetime.min.replace(tzinfo=timezone.utc),
-        ),
-        reverse=True,
-    )
-    top_rows = sorted(
-        rows, key=lambda row: _as_int(row.get("view_count")), reverse=True
-    )[: settings.auto_render_top_n]
-    selected: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for row in [*reddit_rows, *top_rows]:
-        clip_id = str(row.get("id") or "")
-        if not clip_id or clip_id in seen:
-            continue
-        seen.add(clip_id)
-        selected.append(row)
-    limit = min(settings.auto_render_max_per_run, remaining)
-    selected = selected[:limit]
-    ids = [str(row["id"]) for row in selected]
+    limits = automation.current_limits(settings)
+    rows = db.get_new_clips(limits.render_limit)
+    ids = [str(row.get("id")) for row in rows if row.get("id")]
     Path(auto_file).write_text("\n".join(ids), encoding="utf-8")
     logger.info(
-        "auto render selected=%d remaining_daily=%d ids=%s",
-        len(ids),
-        remaining - len(ids),
-        ",".join(ids),
+        "auto render queued=%d render_limit=%d", len(ids), limits.render_limit
     )
     return ids
+
 
 
 def run_fetch(config_directory: Path | None = None) -> FetchResult:
@@ -212,6 +173,13 @@ def run_fetch(config_directory: Path | None = None) -> FetchResult:
         if scope_override not in {"category", "streamers"}:
             raise ValueError("CLIP_SCOPE must be category or streamers")
         settings = replace(settings, clip_scope=scope_override)
+
+    limits = automation.current_limits(settings)
+    settings = replace(
+        settings,
+        max_clips_per_run=limits.fetch_limit,
+        max_render_per_run=limits.render_limit,
+    )
 
     client = TwitchClient()
     game_id = client.get_game_id(settings.game_name)

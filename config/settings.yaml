@@ -3,23 +3,23 @@ lookback_hours: 24
 min_views: 150
 clip_scope: "category"
 clip_language: "en"
-max_clips_per_run: 10
+max_clips_per_run: 20
 max_clip_seconds: 60
-uploads_per_run: 10
-max_uploads_per_day: 25
-upload_window_start: "13:00"
-upload_window_end: "05:00"
+uploads_per_run: 1
+max_uploads_per_day: 100
+upload_window_start: "00:00"
+upload_window_end: "23:59"
 upload_timezone: "Europe/Brussels"
 # Testing mode: no gap between uploads.
 min_minutes_between_uploads: 0
 reddit_priority_hours: 12
 stale_after_hours: 36
-auto_render_top_n: 3
-auto_render_max_per_run: 5
-auto_render_max_per_day: 30
-max_render_per_run: 10
+auto_render_top_n: 20
+auto_render_max_per_run: 20
+auto_render_max_per_day: 120
+max_render_per_run: 20
 render_clip_timeout_seconds: 600
-fetch_interval_minutes: 90
+fetch_interval_minutes: 230
 reddit_enabled: true
 reddit_subreddits: ["LivestreamFail", "GTA6"]
 reddit_lookback_hours: 24
@@ -27,3 +27,11 @@ reddit_min_score: 200
 reddit_top_posts: 20
 refine_cam_edges: true
 skip_burned_captions: true
+auto_approve: true
+automation_enabled: true
+automation_launch_date: "2026-11-19"
+automation_start_upload_cap: 75
+automation_ramp_per_day: 10
+automation_max_upload_cap: 100
+automation_fetch_limit: 20
+automation_render_limit: 20

@@ -16,3 +16,4 @@ export const GAME_OPTIONS = [
 ];
 
 export const DEFAULT_GAME_NAME = "Grand Theft Auto VI";
+export const DEFAULT_MIN_VIEWS = 150;

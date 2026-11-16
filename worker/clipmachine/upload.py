@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import logging
 import os
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 from googleapiclient.errors import HttpError
 
-from clipmachine import blob, db, youtube
+from clipmachine import automation, blob, db, youtube
 from clipmachine.config import load_config
 from clipmachine.download import clip_dir
 from clipmachine.upload_policy import (
@@ -42,13 +43,16 @@ def _run_upload() -> None:
 
     config = load_config()
     settings = config.settings
+    limits = automation.current_limits(settings)
     stale_hours = getattr(settings, "stale_after_hours", None)
     if stale_hours:
         from clipmachine.maintenance import expire_stale
 
         expire_stale(int(stale_hours))
 
-    policy = policy_from_settings(settings)
+    policy = replace(
+        policy_from_settings(settings), max_uploads_per_day=limits.upload_cap
+    )
     now = datetime.now(timezone.utc)
     if not inside_window(now, policy):
         logger.info(
@@ -126,9 +130,13 @@ def _run_upload() -> None:
             )
         except HttpError as exc:
             if youtube.is_upload_limit_error(exc):
+                if getattr(settings, "automation_enabled", False):
+                    automation.record_upload_limit_error("upload_limit")
                 logger.error("channel daily limit reached")
                 return
             if youtube.is_stop_error(exc):
+                if getattr(settings, "automation_enabled", False):
+                    automation.record_upload_limit_error("quota")
                 logger.error(
                     "YouTube API quota reached; retrying next scheduled run"
                 )

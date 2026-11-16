@@ -89,11 +89,10 @@ with their Twitch thumbnail, views, creation time, and optional Reddit score.
 Nothing is downloaded or rendered until you click **Render selected**,
 **Render all new**, or an auto-render rule matches.
 
-Auto-render per fetch run:
-- Any newly imported/enriched clip with a Reddit score.
-- The top `auto_render_top_n` newly imported clips by Twitch views.
-- Deduplicated and capped by `auto_render_max_per_run` and the rolling
-  `auto_render_max_per_day` limit.
+Automation now renders every still-new clip up to the adaptive render limit,
+then auto-approves successful renders. The launch ramp starts at 75 uploads/day
+and rises by 10/day to 100 while no quota/upload-limit errors have occurred in
+the previous 24 hours.
 
 `render` accepts `CLIP_IDS` (comma-separated) and caps each run at
 `max_render_per_run` (10). It marks `downloaded` only after the download completes
@@ -252,18 +251,17 @@ and `TWITCH_CLIENT_SECRET` in the dashboard environment, plus the optional
 Reddit secrets for enrichment. The configured streamers are selected initially;
 search results outside `config/streamers.yaml` are resolved by Twitch.
 
-`fetch.yml` runs every 30 minutes but enforces `fetch_interval_minutes` (90 by
-default) for scheduled runs. Manual runs set `FORCE_FETCH=1`. Auto-render work
-is dispatched as a separate `render.yml` run, so it appears in the recent-runs
-panel.
+`fetch.yml` runs six times per day (`00/04/08/12/16/20 UTC`) and enforces
+`fetch_interval_minutes` (230 by default) for scheduled runs. Manual runs set
+`FORCE_FETCH=1`. Auto-render work is dispatched as a separate `render.yml` run,
+so it appears in the recent-runs panel.
 
 `render.yml` renders selected clip ids or all new clips, subject to
-`max_render_per_run` (10). `upload.yml` runs every 15 minutes, uploads up to
-`uploads_per_run` approved clips (10) sequentially, and uses the 13:00–05:00
-Brussels window and rolling 25/day cap. The
-upload gap is currently `0` for testing; set `min_minutes_between_uploads`
-back to a positive value for launch pacing. The preflight job is lightweight
-and checks expiry/window/cap/gap before installing the full worker.
+`max_render_per_run` (20). `upload.yml` runs every 10 minutes 24/7, uploads one
+approved clip per run, and uses the adaptive daily cap from
+`automation_state` (75 → 85 → 95 → 100). The preflight job is lightweight and
+checks expiry/cap/gap before installing the full worker. On quota or channel
+limit errors it stops, leaves clips approved, and freezes the ramp.
 
 Upload order is:
 1. Clips with `reddit_score` and `clip_created_at` within
@@ -300,11 +298,9 @@ Before using the workflows:
    Blob**. This injects `DATABASE_URL` and `BLOB_READ_WRITE_TOKEN`.
 4. Create a fine-grained GitHub token with **Actions: read and write** on this
    repository only and use it as `GITHUB_TOKEN`.
-5. Add `UPLOAD_MAX_PER_DAY=25`, `UPLOAD_WINDOW_START=13:00`,
-   `UPLOAD_WINDOW_END=05:00`, `UPLOAD_TIMEZONE=Europe/Brussels`,
-   `UPLOAD_MIN_GAP_MINUTES=0`, `UPLOAD_SLOT_MINUTES=15`,
-   `DEFAULT_GAME_NAME=Grand Theft Auto VI`, and `DEFAULT_MIN_VIEWS=150` to
-   Vercel so the header and fetch defaults match the worker config.
+5. Upload pacing, the 24/7 window, the 10-minute slot, and the GTA VI fetch
+   defaults are built-in constants. Only `UPLOAD_MODE` is still an environment
+   setting.
 6. Push to `main`; Vercel deploys automatically. Add the matching GitHub
    repository secrets before using the run buttons.
 

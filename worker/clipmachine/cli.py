@@ -9,11 +9,12 @@ import shutil
 import signal
 import sys
 from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
 
 import psycopg
 
-from clipmachine import db
+from clipmachine import automation, db
 from clipmachine.blob import delete_url, put_file
 from clipmachine.calibrate import CalibrateError, run_calibrate
 from clipmachine.captions import build_ass, has_burned_captions, transcribe
@@ -95,10 +96,12 @@ def cmd_fetch(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_render(args: argparse.Namespace) -> int:
+def _cmd_render(args: argparse.Namespace) -> int:
     """Render new clips, upload them to Blob, and store YouTube metadata."""
     config = load_config(args.config_dir)
     settings = config.settings
+    limits = automation.current_limits(settings)
+    settings = replace(settings, max_render_per_run=limits.render_limit)
     expire_stale(settings.stale_after_hours)
     recover_abandoned_renders()
     requested_ids = [
@@ -177,7 +180,7 @@ def cmd_render(args: argparse.Namespace) -> int:
 
                 db.set_status(
                     clip_id,
-                    "rendered",
+                    "approved" if settings.auto_approve else "rendered",
                     blob_url=video_url,
                     thumb_url=thumb_url,
                     yt_title=metadata.title,
@@ -236,6 +239,17 @@ def cmd_render(args: argparse.Namespace) -> int:
 
     print(f"Rendered and uploaded {rendered} clip(s), {failed} failed.")
     return 0
+
+
+def cmd_render(args: argparse.Namespace) -> int:
+    """Render clips, serialized in GitHub Actions."""
+    if os.environ.get("GITHUB_ACTIONS", "").lower() == "true":
+        with db.advisory_lock(783420) as acquired:
+            if not acquired:
+                logger.info("another render is already running; skipping")
+                return 0
+            return _cmd_render(args)
+    return _cmd_render(args)
 
 def cmd_calibrate(args: argparse.Namespace) -> int:
     """Write a gridded calibration frame for choosing a facecam box."""

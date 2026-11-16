@@ -7,41 +7,17 @@ export interface UploadPolicy {
   slotMinutes: number;
 }
 
-const DEFAULT_POLICY: UploadPolicy = {
-  maxUploadsPerDay: 25,
-  windowStart: "13:00",
-  windowEnd: "05:00",
+export const UPLOAD_POLICY: UploadPolicy = {
+  maxUploadsPerDay: 100,
+  windowStart: "00:00",
+  windowEnd: "23:59",
   timezone: "Europe/Brussels",
   minGapMinutes: 0,
-  slotMinutes: 15,
+  slotMinutes: 10,
 };
 
-function envNumber(value: string | undefined, fallback: number): number {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
-}
-
 export function uploadPolicy(): UploadPolicy {
-  return {
-    maxUploadsPerDay: envNumber(
-      process.env.UPLOAD_MAX_PER_DAY,
-      DEFAULT_POLICY.maxUploadsPerDay,
-    ),
-    windowStart:
-      process.env.UPLOAD_WINDOW_START?.trim() || DEFAULT_POLICY.windowStart,
-    windowEnd:
-      process.env.UPLOAD_WINDOW_END?.trim() || DEFAULT_POLICY.windowEnd,
-    timezone:
-      process.env.UPLOAD_TIMEZONE?.trim() || DEFAULT_POLICY.timezone,
-    minGapMinutes: envNumber(
-      process.env.UPLOAD_MIN_GAP_MINUTES,
-      DEFAULT_POLICY.minGapMinutes,
-    ),
-    slotMinutes: envNumber(
-      process.env.UPLOAD_SLOT_MINUTES,
-      DEFAULT_POLICY.slotMinutes,
-    ),
-  };
+  return UPLOAD_POLICY;
 }
 
 function clock(value: string): { hour: number; minute: number } {

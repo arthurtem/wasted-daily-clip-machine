@@ -471,6 +471,23 @@ def get_clip(clip_id: str) -> dict[str, Any] | None:
 
 
 @contextmanager
+def advisory_lock(key: int):
+    """Hold a Postgres advisory lock for the duration of a context."""
+    conn = connect()
+    acquired = False
+    try:
+        row = conn.execute("SELECT pg_try_advisory_lock(%s)", (key,)).fetchone()
+        acquired = bool(row and row[0])
+        yield acquired
+    finally:
+        try:
+            if acquired:
+                conn.execute("SELECT pg_advisory_unlock(%s)", (key,))
+        finally:
+            conn.close()
+
+
+@contextmanager
 def upload_lock():
     """Hold a Postgres advisory lock so upload jobs cannot overlap."""
     conn = connect()
@@ -485,3 +502,67 @@ def upload_lock():
                 conn.execute("SELECT pg_advisory_unlock(783421)")
         finally:
             conn.close()
+
+
+
+def get_automation_state() -> dict[str, Any] | None:
+    """Return the single automation state row."""
+    with connect(row_factory=dict_row) as conn:
+        row = conn.execute(
+            "SELECT * FROM automation_state WHERE id = TRUE LIMIT 1"
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def ensure_automation_state(
+    launch_date: str,
+    upload_cap: int,
+    fetch_limit: int,
+    render_limit: int,
+) -> dict[str, Any]:
+    """Create the automation row if needed and return it."""
+    with connect(row_factory=dict_row) as conn:
+        conn.execute(
+            """
+            INSERT INTO automation_state
+                (id, launch_date, upload_cap, fetch_limit, render_limit)
+            VALUES (TRUE, %s, %s, %s, %s)
+            ON CONFLICT (id) DO NOTHING
+            """,
+            (launch_date, upload_cap, fetch_limit, render_limit),
+        )
+        row = conn.execute(
+            "SELECT * FROM automation_state WHERE id = TRUE"
+        ).fetchone()
+    if row is None:
+        raise RuntimeError("automation_state row missing")
+    return dict(row)
+
+
+def set_automation_limits(
+    upload_cap: int, fetch_limit: int, render_limit: int
+) -> None:
+    """Update the current automation caps."""
+    with connect() as conn:
+        conn.execute(
+            """
+            UPDATE automation_state
+            SET upload_cap = %s, fetch_limit = %s, render_limit = %s,
+                updated_at = now()
+            WHERE id = TRUE
+            """,
+            (upload_cap, fetch_limit, render_limit),
+        )
+
+
+def record_upload_limit_error(kind: str) -> None:
+    """Record a YouTube quota/upload-limit stop so ramp can freeze."""
+    column = (
+        "last_upload_limit_at"
+        if kind == "upload_limit"
+        else "last_quota_error_at"
+    )
+    with connect() as conn:
+        conn.execute(
+            f"UPDATE automation_state SET {column} = now(), updated_at = now() WHERE id = TRUE"
+        )
