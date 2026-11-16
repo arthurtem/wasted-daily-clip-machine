@@ -2,12 +2,63 @@ name: Upload approved clips
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "*/15 * * * *"
 
 permissions:
   contents: read
 
+concurrency:
+  group: youtube-upload
+  cancel-in-progress: false
+
 jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      eligible: ${{ steps.gate.outputs.eligible }}
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+      UPLOAD_MODE: api
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check required secrets
+        run: |
+          missing=()
+          for var in DATABASE_URL BLOB_READ_WRITE_TOKEN; do
+            if [ -z "${!var}" ]; then
+              missing+=("$var")
+            fi
+          done
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "::error::Missing GitHub repository secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install lightweight gate dependencies
+        run: pip install "psycopg[binary]>=3.1" "PyYAML>=6.0" "requests>=2"
+
+      - name: Install Blob helper only
+        run: npm ci --prefix worker/scripts
+
+      - name: Expire stale clips and check upload policy
+        id: gate
+        run: PYTHONPATH=worker python -m clipmachine.upload_gate
+
   upload:
+    needs: preflight
+    if: needs.preflight.outputs.eligible == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -47,5 +98,5 @@ jobs:
       - name: Install worker
         run: pip install -e "worker"
 
-      - name: Upload approved clips
+      - name: Upload one approved clip
         run: python -m clipmachine upload

@@ -258,3 +258,18 @@ class TwitchClient:
             len(clips),
         )
         return clips
+
+
+    def get_clips_by_ids(self, clip_ids: Sequence[str]) -> list[dict[str, Any]]:
+        """Return Twitch clips by id, in chunks of 100."""
+        clips: list[dict[str, Any]] = []
+        unique = list(dict.fromkeys(
+            str(clip_id) for clip_id in clip_ids if clip_id
+        ))
+        for start in range(0, len(unique), CLIPS_PAGE_SIZE):
+            chunk = unique[start : start + CLIPS_PAGE_SIZE]
+            params = [("id", clip_id) for clip_id in chunk]
+            payload = self._helix_get("/clips", params)
+            clips.extend(payload.get("data") or [])
+        logger.info("clip lookup by id requested=%d found=%d", len(unique), len(clips))
+        return clips

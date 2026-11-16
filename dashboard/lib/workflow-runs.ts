@@ -33,7 +33,7 @@ export async function getRecentWorkflowRuns(
     return [];
   }
 
-  const url = `https://api.github.com/repos/${owner}/${repo}/actions/runs?per_page=${limit}`;
+  const url = `https://api.github.com/repos/${owner}/${repo}/actions/runs?per_page=50`;
   let response: Response;
   try {
     response = await fetch(url, {
@@ -56,7 +56,7 @@ export async function getRecentWorkflowRuns(
     | { workflow_runs?: Row[] }
     | null;
   const rows = payload?.workflow_runs ?? [];
-  return rows.map((row) => ({
+  const runs = rows.map((row) => ({
     id: asNumber(row.id),
     name: asString(row.name),
     displayTitle: asString(row.display_title),
@@ -69,4 +69,16 @@ export async function getRecentWorkflowRuns(
       typeof row.created_at === "string" ? row.created_at : null,
     event: asString(row.event),
   }));
+
+  const perWorkflow = new Map<string, number>();
+  return runs
+    .filter((run) => {
+      const seen = perWorkflow.get(run.name) ?? 0;
+      if (seen >= 2) {
+        return false;
+      }
+      perWorkflow.set(run.name, seen + 1);
+      return true;
+    })
+    .slice(0, limit);
 }

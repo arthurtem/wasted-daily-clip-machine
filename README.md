@@ -24,6 +24,7 @@ for **Wasted Daily**.
   another build such as `ffmpeg-alt`)
 - Node.js 18+ and npm (Vercel Blob helper)
 - Twitch API credentials and a Vercel Blob read/write token
+- Optional Reddit app credentials for trending discovery
 - faster-whisper downloads the `small` model on first use
 - `tesseract` for the burned-in caption check (`brew install tesseract`); without
   it, the worker keeps adding its own captions
@@ -51,16 +52,47 @@ can point at a different config directory.
 ```bash
 python -m clipmachine check-config   # print streamers and settings
 python -m clipmachine init-db        # apply migrations (safe to run again)
-python -m clipmachine fetch          # fetch clips from Twitch into the database
-python -m clipmachine render         # download, caption, render, upload, store metadata
+python -m clipmachine fetch          # import clips + Reddit metadata + auto-render ids
+python -m clipmachine render         # render selected/new clips (CLIP_IDS optional)
 python -m clipmachine calibrate kaicenat  # grid image to choose a facecam_box
-python -m clipmachine upload         # upload approved clips (UPLOAD_MODE=api)
-python -m clipmachine reddit         # placeholder (later)
+python -m clipmachine upload         # upload one approved clip (UPLOAD_MODE=api)
+python -m clipmachine reddit         # enrich/import clips from Reddit trending
+python -m clipmachine upload-gate    # lightweight upload preflight
 ```
 
 `fetch` needs `TWITCH_CLIENT_ID` and `TWITCH_CLIENT_SECRET` in the environment.
-Until GTA VI clips exist (19 November 2026), test with
-`GAME_NAME="Grand Theft Auto V" python -m clipmachine fetch`.
+Reddit enrichment additionally needs `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`,
+and `REDDIT_USER_AGENT`; it only resolves Reddit posts to original Twitch clips.
+Until GTA VI clips exist, test with Grand Theft Auto V and min views `0`.
+
+Twitch category names verified for launch:
+- `Grand Theft Auto VI` -> `1867279146`
+- `Grand Theft Auto V` -> `32982`
+
+Switching game/min views is configuration/environment only; no code change.
+
+
+## Import inbox, auto-render, and freshness
+
+`fetch` only imports clips. Imported clips are `new` and appear on `/inbox`
+with their Twitch thumbnail, views, creation time, and optional Reddit score.
+Nothing is downloaded or rendered until you click **Render selected**,
+**Render all new**, or an auto-render rule matches.
+
+Auto-render per fetch run:
+- Any newly imported/enriched clip with a Reddit score.
+- The top `auto_render_top_n` newly imported clips by Twitch views.
+- Deduplicated and capped by `auto_render_max_per_run` and the rolling
+  `auto_render_max_per_day` limit.
+
+`render` accepts `CLIP_IDS` (comma-separated) and caps each run at
+`max_render_per_run`. It marks `downloaded` only after the download completes
+and `rendered` only after Blob uploads finish. A per-clip timeout marks the row
+`failed` with `timed out`; abandoned downloads are recovered at the next render
+run.
+
+Approved or rendered clips older than `stale_after_hours` are rejected with
+error `stale` and their Blob files are deleted at the start of upload/render.
 
 ## Work directory
 
@@ -196,36 +228,43 @@ write APIs return 403. The header shows “Review-only access”. Remove the
 variable (or rotate it) after the review.
 
 
-### Automatic uploads
+### Fetch and render workflows
 
-The queue fetch panel searches Twitch directly for games and streamers
-(`/api/twitch/streamers`, `/api/twitch/games`), lets you set min views, and
-then dispatches `pipeline.yml`. It needs `TWITCH_CLIENT_ID` and
-`TWITCH_CLIENT_SECRET` in the dashboard environment. The three configured
-streamers are selected initially; searched streamers outside
-`config/streamers.yaml` are resolved by the worker with their Twitch display
-names. Until GTA VI launches, pick Grand Theft Auto V and set min views to 0
-for testing.
+The dashboard fetch panel searches Twitch (`/api/twitch/streamers`,
+`/api/twitch/games`) and dispatches `fetch.yml`. It needs `TWITCH_CLIENT_ID`
+and `TWITCH_CLIENT_SECRET` in the dashboard environment, plus the optional
+Reddit secrets for enrichment. The configured streamers are selected initially;
+search results outside `config/streamers.yaml` are resolved by Twitch.
 
-`UPLOAD_MODE=api` shows **Upload approved now** on the queue and `/post`. The
-buttons call the dashboard API, which dispatches the corresponding workflow on
-`main` and then shows the GitHub run link/status plus a recent-workflow panel.
+`fetch.yml` runs every 30 minutes but enforces `fetch_interval_minutes` (90 by
+default) for scheduled runs. Manual runs set `FORCE_FETCH=1`. Auto-render work
+is dispatched as a separate `render.yml` run, so it appears in the recent-runs
+panel.
 
-Before using it:
+`render.yml` renders selected clip ids or all new clips, subject to
+`max_render_per_run`. `upload.yml` runs every 15 minutes, uploads at most one
+clip, and uses the 13:00–05:00 Brussels window, rolling 25/day cap, and a
+30-minute gap. (A 30-minute gap is deliberate: with 15-minute cron slots it
+keeps 25/day attainable; 35 minutes would make the effective cadence 45
+minutes and cap the day at about 21.) The preflight job is lightweight and
+checks expiry/window/cap/gap before installing the full worker.
+
+Upload order is:
+1. Clips with `reddit_score` and `clip_created_at` within
+   `reddit_priority_hours` (newest first).
+2. All other approved clips by `clip_created_at DESC`.
+
+The dashboard header shows uploads in the last 24 hours / the cap and the next
+allowed upload time.
+
+Before using the workflows:
 1. Set `UPLOAD_MODE=api` in Vercel and redeploy.
-2. Add these GitHub repository secrets for the workflow: `DATABASE_URL`,
-   `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`,
-   `TOKEN_ENCRYPTION_KEY`, `BLOB_READ_WRITE_TOKEN`.
-3. Keep `TOKEN_ENCRYPTION_KEY` identical to the Vercel value; otherwise the
-   worker cannot decrypt the connection.
-4. Push `upload.yml` to `main` and make sure the Vercel `GITHUB_TOKEN` has
-   Actions read/write.
-
-`pipeline.yml` powers **Fetch new clips now** (`fetch` then `render`). It needs
-the repo secrets `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`, `DATABASE_URL`,
-and `BLOB_READ_WRITE_TOKEN`; optionally `GAME_NAME` while testing with GTA V.
-Until the YouTube API audit is approved, prefer manual posting or upload test
-clips with private visibility.
+2. Add GitHub repository secrets: `DATABASE_URL`, `TWITCH_CLIENT_ID`,
+   `TWITCH_CLIENT_SECRET`, `BLOB_READ_WRITE_TOKEN`, `GOOGLE_OAUTH_CLIENT_ID`,
+   `GOOGLE_OAUTH_CLIENT_SECRET`, `TOKEN_ENCRYPTION_KEY`, and optionally
+   `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_USER_AGENT`.
+3. Keep `TOKEN_ENCRYPTION_KEY` identical in Vercel and Actions.
+4. Make sure the Vercel `GITHUB_TOKEN` has Actions read/write.
 
 ### Deploy to Vercel
 
@@ -245,9 +284,13 @@ clips with private visibility.
    Blob**. This injects `DATABASE_URL` and `BLOB_READ_WRITE_TOKEN`.
 4. Create a fine-grained GitHub token with **Actions: read and write** on this
    repository only and use it as `GITHUB_TOKEN`.
-5. Push to `main`; Vercel deploys automatically. Both `upload.yml` and
-   `pipeline.yml` exist; add the matching GitHub repository secrets before
-   using the run buttons.
+5. Add `UPLOAD_MAX_PER_DAY=25`, `UPLOAD_WINDOW_START=13:00`,
+   `UPLOAD_WINDOW_END=05:00`, `UPLOAD_TIMEZONE=Europe/Brussels`,
+   `UPLOAD_MIN_GAP_MINUTES=30`, `UPLOAD_SLOT_MINUTES=15`,
+   `DEFAULT_GAME_NAME=Grand Theft Auto VI`, and `DEFAULT_MIN_VIEWS=150` to
+   Vercel so the header and fetch defaults match the worker config.
+6. Push to `main`; Vercel deploys automatically. Add the matching GitHub
+   repository secrets before using the run buttons.
 
 ## Database
 
@@ -255,8 +298,9 @@ clips with private visibility.
 
 ```
 new -> downloaded -> rendered -> approved -> uploaded
+new -> rejected
 rendered -> rejected
-any -> failed
+failed -> new (retry)
 ```
 
 Indexes exist on `status` and `streamer_login`.

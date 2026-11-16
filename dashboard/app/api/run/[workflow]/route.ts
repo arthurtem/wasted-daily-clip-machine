@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getSessionRole } from "@/lib/auth";
 
-const WORKFLOWS = new Set(["pipeline", "upload"]);
+const WORKFLOWS = new Set(["fetch", "render", "upload"]);
 const GITHUB_HEADERS = {
   Accept: "application/vnd.github+json",
   "X-GitHub-Api-Version": "2022-11-28",
@@ -104,7 +104,7 @@ export async function POST(
   }
 
   let inputs: Record<string, string> | undefined;
-  if (workflow === "pipeline") {
+  if (workflow === "fetch" || workflow === "render") {
     let raw: unknown = null;
     try {
       raw = await request.json();
@@ -119,56 +119,74 @@ export async function POST(
         );
       }
       const record = raw as Record<string, unknown>;
-      const game = record.game_name;
-      if (game !== undefined) {
-        if (typeof game !== "string" || game.length > 100) {
-          return NextResponse.json(
-            { error: "game_name must be a string of at most 100 chars." },
-            { status: 400 },
-          );
+      inputs = {};
+      if (workflow === "fetch") {
+        const game = record.game_name;
+        if (game !== undefined) {
+          if (typeof game !== "string" || game.length > 100) {
+            return NextResponse.json(
+              { error: "game_name must be a string of at most 100 chars." },
+              { status: 400 },
+            );
+          }
         }
-      }
-      const minViews = record.min_views;
-      if (minViews !== undefined) {
-        if (
-          typeof minViews !== "number" ||
-          !Number.isInteger(minViews) ||
-          minViews < 0
-        ) {
-          return NextResponse.json(
-            { error: "min_views must be a non-negative integer." },
-            { status: 400 },
-          );
+        const minViews = record.min_views;
+        if (minViews !== undefined) {
+          if (
+            typeof minViews !== "number" ||
+            !Number.isInteger(minViews) ||
+            minViews < 0
+          ) {
+            return NextResponse.json(
+              { error: "min_views must be a non-negative integer." },
+              { status: 400 },
+            );
+          }
         }
-      }
-      const streamers = record.streamers;
-      if (streamers !== undefined) {
+        const streamers = record.streamers;
+        if (streamers !== undefined) {
+          if (
+            !Array.isArray(streamers) ||
+            streamers.some(
+              (login) => typeof login !== "string" || login.length > 50,
+            )
+          ) {
+            return NextResponse.json(
+              { error: "streamers must be an array of Twitch logins." },
+              { status: 400 },
+            );
+          }
+        }
+        if (typeof game === "string" && game.trim()) {
+          inputs.game_name = game.trim();
+        }
+        if (typeof minViews === "number") {
+          inputs.min_views = String(minViews);
+        }
+        if (Array.isArray(streamers)) {
+          const selected = streamers
+            .map((login) => String(login).trim())
+            .filter(Boolean);
+          if (selected.length > 0) {
+            inputs.streamers = selected.join(",");
+          }
+        }
+      } else {
+        const clipIds = record.clip_ids;
         if (
-          !Array.isArray(streamers) ||
-          streamers.some(
-            (login) => typeof login !== "string" || login.length > 50,
+          !Array.isArray(clipIds) ||
+          clipIds.length === 0 ||
+          clipIds.length > 25 ||
+          clipIds.some(
+            (id) => typeof id !== "string" || !id.trim() || id.length > 100,
           )
         ) {
           return NextResponse.json(
-            { error: "streamers must be an array of Twitch logins." },
+            { error: "clip_ids must be 1-25 clip ids." },
             { status: 400 },
           );
         }
-      }
-      inputs = {};
-      if (typeof game === "string" && game.trim()) {
-        inputs.game_name = game.trim();
-      }
-      if (typeof minViews === "number") {
-        inputs.min_views = String(minViews);
-      }
-      if (Array.isArray(streamers)) {
-        const selected = streamers
-          .map((login) => String(login).trim())
-          .filter(Boolean);
-        if (selected.length > 0) {
-          inputs.streamers = selected.join(",");
-        }
+        inputs.clip_ids = clipIds.map((id) => String(id).trim()).join(",");
       }
     }
   }
@@ -214,7 +232,7 @@ export async function POST(
         "GitHub could not find the repo or workflow. Check GITHUB_OWNER/GITHUB_REPO and that the workflow exists on main. ";
     } else if (response.status === 422) {
       hint =
-        "GitHub rejected the workflow inputs. Push the latest pipeline.yml (with game_name, min_views, and streamers inputs) to main. ";
+        "GitHub rejected the workflow inputs. Push the latest fetch.yml/render.yml to main. ";
     }
     return NextResponse.json(
       {

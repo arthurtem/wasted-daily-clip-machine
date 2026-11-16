@@ -18,4 +18,10 @@ class NewClip:
     view_count: int | None = None
     duration_s: float | None = None
     clip_created_at: datetime | None = None
+    thumbnail_url: str | None = None
+    reddit_score: int | None = None
+    reddit_url: str | None = None
+    reddit_id: str | None = None
+    reddit_subreddit: str | None = None
+    reddit_comments: int | None = None
     source: str = "twitch"

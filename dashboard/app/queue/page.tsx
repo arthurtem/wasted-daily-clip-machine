@@ -24,6 +24,12 @@ export default async function QueuePage() {
   const uploadMode: UploadMode =
     process.env.UPLOAD_MODE === "api" ? "api" : "manual";
   const channelName = process.env.CHANNEL_NAME?.trim() || "YouTube";
+  const defaultGame =
+    process.env.DEFAULT_GAME_NAME?.trim() || "Grand Theft Auto VI";
+  const parsedMinViews = Number(process.env.DEFAULT_MIN_VIEWS ?? "150");
+  const defaultMinViews = Number.isInteger(parsedMinViews)
+    ? parsedMinViews
+    : 150;
 
   return (
     <main className="mx-auto max-w-[1700px] space-y-5 px-4 py-6 sm:px-6 lg:py-8">
@@ -32,6 +38,8 @@ export default async function QueuePage() {
         uploadMode={uploadMode}
         readOnly={readOnly}
         youtubeConnected={youtubeConnected}
+        defaultGame={defaultGame}
+        defaultMinViews={defaultMinViews}
       />
       {uploadMode === "api" && !youtubeConnected ? <YouTubeNoticeBanner /> : null}
       <WorkflowRuns runs={runs} />
@@ -40,7 +48,11 @@ export default async function QueuePage() {
         <div className="rounded-3xl border border-dashed border-zinc-800 bg-zinc-900/40 px-6 py-16 text-center">
           <h2 className="text-lg font-semibold">No clips waiting</h2>
           <p className="mt-2 text-sm text-zinc-400">
-            Rendered Shorts will appear here for review.
+            Imported clips are in the{" "}
+            <a href="/inbox" className="text-zinc-200 underline underline-offset-4">
+              inbox
+            </a>
+            ; rendered Shorts will appear here for review.
           </p>
         </div>
       ) : (

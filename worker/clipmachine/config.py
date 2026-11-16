@@ -47,6 +47,24 @@ class Settings:
     uploads_per_run: int
     refine_cam_edges: bool = True
     skip_burned_captions: bool = True
+    max_uploads_per_day: int = 25
+    upload_window_start: str = "13:00"
+    upload_window_end: str = "05:00"
+    upload_timezone: str = "Europe/Brussels"
+    min_minutes_between_uploads: int = 30
+    reddit_priority_hours: int = 12
+    stale_after_hours: int = 36
+    auto_render_top_n: int = 3
+    auto_render_max_per_run: int = 5
+    auto_render_max_per_day: int = 30
+    max_render_per_run: int = 5
+    render_clip_timeout_seconds: int = 600
+    fetch_interval_minutes: int = 90
+    reddit_enabled: bool = True
+    reddit_subreddits: tuple[str, ...] = ("LivestreamFail", "GTA6")
+    reddit_lookback_hours: int = 24
+    reddit_min_score: int = 200
+    reddit_top_posts: int = 20
 
 
 @dataclass(frozen=True)
@@ -215,10 +233,71 @@ def load_settings(
             f"{path}: skip_burned_captions must be true or false"
         )
 
+    def optional_int(key: str, default: int, minimum: int = 0) -> int:
+        """Read an optional non-negative integer setting."""
+        value = data.get(key, default)
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ConfigError(f"{path}: {key} must be an integer")
+        if value < minimum:
+            raise ConfigError(f"{path}: {key} must be >= {minimum}; got {value}")
+        return value
+
+    def time_setting(key: str, default: str) -> str:
+        """Read an optional HH:MM setting."""
+        value = data.get(key, default)
+        if not isinstance(value, str):
+            raise ConfigError(f"{path}: {key} must be an HH:MM string")
+        parts = value.split(":")
+        if (
+            len(parts) != 2
+            or not parts[0].isdigit()
+            or not parts[1].isdigit()
+            or not 0 <= int(parts[0]) <= 23
+            or not 0 <= int(parts[1]) <= 59
+        ):
+            raise ConfigError(f"{path}: {key} must be an HH:MM string")
+        return value
+
+    reddit_subreddits = data.get(
+        "reddit_subreddits", ["LivestreamFail", "GTA6"]
+    )
+    if not isinstance(reddit_subreddits, list) or not all(
+        isinstance(item, str) and item.strip() for item in reddit_subreddits
+    ):
+        raise ConfigError(f"{path}: reddit_subreddits must be a list of names")
+    reddit_enabled = data.get("reddit_enabled", True)
+    if not isinstance(reddit_enabled, bool):
+        raise ConfigError(f"{path}: reddit_enabled must be true or false")
+    upload_timezone = data.get("upload_timezone", "Europe/Brussels")
+    if not isinstance(upload_timezone, str) or not upload_timezone.strip():
+        raise ConfigError(f"{path}: upload_timezone must be a non-empty string")
+
     return Settings(
         game_name=game_name.strip(),
         refine_cam_edges=refine_cam_edges,
         skip_burned_captions=skip_burned_captions,
+        max_uploads_per_day=optional_int("max_uploads_per_day", 25),
+        upload_window_start=time_setting("upload_window_start", "13:00"),
+        upload_window_end=time_setting("upload_window_end", "05:00"),
+        upload_timezone=upload_timezone.strip(),
+        min_minutes_between_uploads=optional_int(
+            "min_minutes_between_uploads", 30
+        ),
+        reddit_priority_hours=optional_int("reddit_priority_hours", 12),
+        stale_after_hours=optional_int("stale_after_hours", 36, 1),
+        auto_render_top_n=optional_int("auto_render_top_n", 3),
+        auto_render_max_per_run=optional_int("auto_render_max_per_run", 5, 1),
+        auto_render_max_per_day=optional_int("auto_render_max_per_day", 30),
+        max_render_per_run=optional_int("max_render_per_run", 5, 1),
+        render_clip_timeout_seconds=optional_int(
+            "render_clip_timeout_seconds", 600, 30
+        ),
+        fetch_interval_minutes=optional_int("fetch_interval_minutes", 90),
+        reddit_enabled=reddit_enabled,
+        reddit_subreddits=tuple(item.strip() for item in reddit_subreddits),
+        reddit_lookback_hours=optional_int("reddit_lookback_hours", 24, 1),
+        reddit_min_score=optional_int("reddit_min_score", 200),
+        reddit_top_posts=optional_int("reddit_top_posts", 20, 1),
         **values,
     )
 

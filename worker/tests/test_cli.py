@@ -81,13 +81,27 @@ def test_init_db_reports_missing_database_url(
     assert "DATABASE_URL is not set" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("command", ["reddit"])
-def test_placeholder_commands(
-    command: str, capsys: pytest.CaptureFixture[str]
+def test_reddit_dispatches(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], config_dir: Path
 ) -> None:
-    """Phase-later commands exit 2 with a placeholder message."""
-    assert main([command]) == 2
-    assert f"{command} is not implemented yet." in capsys.readouterr().err
+    """reddit runs the discovery helper with the configured streamers."""
+    monkeypatch.setenv("CLIPMACHINE_CONFIG_DIR", str(config_dir))
+    monkeypatch.setattr("clipmachine.cli.TwitchClient", lambda: object())
+    monkeypatch.setattr(
+        "clipmachine.cli.run_reddit", lambda *args, **kwargs: ["clip-a"]
+    )
+    # Avoid real Twitch calls by patching the tiny wrapper methods on a fake client.
+    class FakeClient:
+        def get_game_id(self, name: str) -> str:
+            return "gta5"
+
+        def get_user_ids(self, logins: list[str]) -> dict[str, str]:
+            return {login: "1" for login in logins}
+
+    monkeypatch.setattr("clipmachine.cli.TwitchClient", lambda: FakeClient())
+
+    assert main(["reddit"]) == 0
+    assert "Reddit affected 1 clip(s)." in capsys.readouterr().out
 
 
 def test_fetch_dispatches(
@@ -190,7 +204,10 @@ def test_render_runs_full_pipeline(
     monkeypatch.setattr(
         "clipmachine.cli.load_config", lambda directory=None: _render_config()
     )
-    monkeypatch.setattr(db, "get_clips", lambda status, limit: [_clip()])
+    monkeypatch.setattr("clipmachine.cli.expire_stale", lambda hours: 0)
+    monkeypatch.setattr("clipmachine.cli.recover_abandoned_renders", lambda: 0)
+    monkeypatch.setattr(db, "get_new_clips", lambda limit: [_clip()])
+    monkeypatch.setattr(db, "get_new_clips_by_ids", lambda ids: [_clip()])
     monkeypatch.setattr("clipmachine.cli.download_clip", lambda clip: source)
     monkeypatch.setattr("clipmachine.cli.detect_layout", fake_detect)
     monkeypatch.setattr(db, "set_status", fake_status)
@@ -251,7 +268,10 @@ def test_render_failure_marks_failed_and_keeps_work(
     monkeypatch.setattr(
         "clipmachine.cli.load_config", lambda directory=None: _render_config()
     )
-    monkeypatch.setattr(db, "get_clips", lambda status, limit: [_clip()])
+    monkeypatch.setattr("clipmachine.cli.expire_stale", lambda hours: 0)
+    monkeypatch.setattr("clipmachine.cli.recover_abandoned_renders", lambda: 0)
+    monkeypatch.setattr(db, "get_new_clips", lambda limit: [_clip()])
+    monkeypatch.setattr(db, "get_new_clips_by_ids", lambda ids: [_clip()])
     monkeypatch.setattr("clipmachine.cli.download_clip", lambda clip: source)
     monkeypatch.setattr(
         "clipmachine.cli.detect_layout",
@@ -303,7 +323,10 @@ def test_render_upload_failure_deletes_partial_uploads(
     monkeypatch.setattr(
         "clipmachine.cli.load_config", lambda directory=None: _render_config()
     )
-    monkeypatch.setattr(db, "get_clips", lambda status, limit: [_clip()])
+    monkeypatch.setattr("clipmachine.cli.expire_stale", lambda hours: 0)
+    monkeypatch.setattr("clipmachine.cli.recover_abandoned_renders", lambda: 0)
+    monkeypatch.setattr(db, "get_new_clips", lambda limit: [_clip()])
+    monkeypatch.setattr(db, "get_new_clips_by_ids", lambda ids: [_clip()])
     monkeypatch.setattr("clipmachine.cli.download_clip", lambda clip: source)
     monkeypatch.setattr(
         "clipmachine.cli.detect_layout",
@@ -351,7 +374,10 @@ def test_render_skips_captions_when_burned_in(
     monkeypatch.setattr(
         "clipmachine.cli.load_config", lambda directory=None: _render_config()
     )
-    monkeypatch.setattr(db, "get_clips", lambda status, limit: [_clip()])
+    monkeypatch.setattr("clipmachine.cli.expire_stale", lambda hours: 0)
+    monkeypatch.setattr("clipmachine.cli.recover_abandoned_renders", lambda: 0)
+    monkeypatch.setattr(db, "get_new_clips", lambda limit: [_clip()])
+    monkeypatch.setattr(db, "get_new_clips_by_ids", lambda ids: [_clip()])
     monkeypatch.setattr("clipmachine.cli.download_clip", lambda clip: source)
     monkeypatch.setattr(
         "clipmachine.cli.detect_layout",

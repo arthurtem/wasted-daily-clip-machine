@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,10 @@ from googleapiclient.errors import HttpError
 from clipmachine import blob, db, youtube
 from clipmachine.config import load_config
 from clipmachine.download import clip_dir
+from clipmachine.upload_policy import (
+    inside_window,
+    policy_from_settings,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +41,42 @@ def run_upload() -> None:
         return
 
     config = load_config()
+    settings = config.settings
+    stale_hours = getattr(settings, "stale_after_hours", None)
+    if stale_hours:
+        from clipmachine.maintenance import expire_stale
+
+        expire_stale(int(stale_hours))
+
+    policy = policy_from_settings(settings)
+    now = datetime.now(timezone.utc)
+    if not inside_window(now, policy):
+        logger.info(
+            "outside upload window %s-%s %s; nothing to do",
+            policy.window_start,
+            policy.window_end,
+            policy.timezone_name,
+        )
+        return
+    since = now - timedelta(hours=24)
+    uploaded_last_24h = db.count_uploads_since(since)
+    if uploaded_last_24h >= policy.max_uploads_per_day:
+        logger.info(
+            "daily upload cap reached (%d/%d)",
+            uploaded_last_24h,
+            policy.max_uploads_per_day,
+        )
+        return
+    latest = db.latest_upload_at()
+    if latest is not None and now - latest < timedelta(
+        minutes=policy.min_minutes_between_uploads
+    ):
+        logger.info(
+            "upload gap not met; last upload was %.1f minutes ago",
+            (now - latest).total_seconds() / 60,
+        )
+        return
+
     connection = db.get_youtube_connection()
     if connection is None:
         logger.info("YouTube not connected")
@@ -51,7 +92,10 @@ def run_upload() -> None:
         logger.error("YouTube client unavailable: %s", exc)
         return
 
-    clips = db.get_clips("approved", config.settings.uploads_per_run)
+    reddit_priority_hours = int(
+        getattr(settings, "reddit_priority_hours", 12)
+    )
+    clips = db.get_approved_for_upload(1, reddit_priority_hours)
     if not clips:
         logger.info("no approved clips to upload")
         return
@@ -78,11 +122,12 @@ def run_upload() -> None:
                 str(clip.get("yt_privacy") or ""),
             )
         except HttpError as exc:
+            if youtube.is_upload_limit_error(exc):
+                logger.error("channel daily limit reached")
+                return
             if youtube.is_stop_error(exc):
                 logger.error(
-                    "clip %s upload stopped by quota/upload limit: %s",
-                    clip_id,
-                    exc,
+                    "YouTube API quota reached; retrying next scheduled run"
                 )
                 return
             logger.exception("clip %s upload failed", clip_id)
@@ -99,7 +144,7 @@ def run_upload() -> None:
             except OSError:
                 pass
 
-        db.set_status(clip_id, "uploaded", youtube_video_id=video_id)
+        db.mark_uploaded(clip_id, video_id)
         for url in (clip.get("blob_url"), clip.get("thumb_url")):
             if not url:
                 continue

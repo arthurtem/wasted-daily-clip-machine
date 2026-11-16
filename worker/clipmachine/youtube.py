@@ -108,14 +108,23 @@ def is_retryable(error: HttpError) -> bool:
     return _http_status(error) in RETRY_STATUSES
 
 
-def is_stop_error(error: HttpError) -> bool:
-    """Return whether an error is a quota or upload-limit stop condition."""
+def _error_text(error: HttpError) -> str:
+    """Return the decoded error body."""
     content = getattr(error, "content", b"")
     if isinstance(content, bytes):
-        text = content.decode("utf-8", errors="ignore")
-    else:
-        text = str(content)
+        return content.decode("utf-8", errors="ignore")
+    return str(content)
+
+
+def is_stop_error(error: HttpError) -> bool:
+    """Return whether an error is a quota or upload-limit stop condition."""
+    text = _error_text(error)
     return "quotaExceeded" in text or "uploadLimitExceeded" in text
+
+
+def is_upload_limit_error(error: HttpError) -> bool:
+    """Return whether YouTube rejected the channel's daily upload limit."""
+    return "uploadLimitExceeded" in _error_text(error)
 
 
 def upload_short(

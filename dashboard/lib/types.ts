@@ -18,6 +18,8 @@ export interface QueueClip {
   view_count: number | null;
   clip_created_at: string | null;
   reddit_score: number | null;
+  reddit_url: string | null;
+  thumbnail_url: string | null;
   blob_url: string | null;
   thumb_url: string | null;
   yt_title: string | null;
@@ -48,9 +50,14 @@ export interface ClipForUpdate {
 }
 
 export interface Counts {
+  new: number;
   rendered: number;
   approved: number;
-  uploadedToday: number;
+  uploadedLast24h: number;
+  maxUploadsPerDay: number;
+  nextUploadAt: string | null;
+  uploadWindowStart: string;
+  uploadWindowEnd: string;
   failed: number;
 }
 

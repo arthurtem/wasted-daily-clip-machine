@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import shutil
+import signal
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 import psycopg
@@ -18,12 +21,33 @@ from clipmachine.config import ConfigError, load_config
 from clipmachine.download import DownloadError, download_clip
 from clipmachine.facecam import detect_layout
 from clipmachine.fetch import run_fetch
+from clipmachine.maintenance import expire_stale, recover_abandoned_renders
 from clipmachine.metadata import build_youtube_metadata
+from clipmachine.reddit import run_reddit
 from clipmachine.render import render_final
-from clipmachine.twitch import TwitchError
+from clipmachine.twitch import TwitchClient, TwitchError
 from clipmachine.upload import run_upload
 
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def _time_limit(seconds: int):
+    """Raise TimeoutError when a clip exceeds its render budget."""
+    if seconds <= 0 or not hasattr(signal, "SIGALRM"):
+        yield
+        return
+
+    def handler(signum, frame):
+        raise TimeoutError("timed out")
+
+    previous = signal.signal(signal.SIGALRM, handler)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
 
 
 def cmd_check_config(args: argparse.Namespace) -> int:
@@ -75,80 +99,114 @@ def cmd_render(args: argparse.Namespace) -> int:
     """Render new clips, upload them to Blob, and store YouTube metadata."""
     config = load_config(args.config_dir)
     settings = config.settings
-    clips = db.get_clips("new", settings.max_clips_per_run)
+    expire_stale(settings.stale_after_hours)
+    recover_abandoned_renders()
+    requested_ids = [
+        value.strip()
+        for value in os.environ.get("CLIP_IDS", "").split(",")
+        if value.strip()
+    ]
+    if requested_ids:
+        clips = db.get_new_clips_by_ids(requested_ids)
+    else:
+        clips = db.get_new_clips(settings.max_render_per_run)
+    clips = clips[: settings.max_render_per_run]
     streamers_by_login = {
         streamer.twitch_login.lower(): streamer
         for streamer in config.streamers
     }
+    auto_render = os.environ.get("AUTO_RENDER", "").strip() == "1"
     rendered = 0
     failed = 0
     for clip in clips:
         clip_id = str(clip.get("id") or "")
         login = str(clip.get("streamer_login") or "").lower()
         logger.info("clip %s render start", clip_id)
-        source = download_clip(clip)
-        if source is None:
-            failed += 1
-            continue
-
         uploaded: list[str] = []
         try:
-            streamer = streamers_by_login.get(login)
-            layout = detect_layout(
-                source,
-                streamer.facecam_override if streamer else None,
-                settings.refine_cam_edges,
-                streamer.facecam_box if streamer else None,
-            )
-            if layout.needs_review:
-                logger.warning(
-                    "clip %s facecam needs review: source=%s face_ratio=%s",
-                    clip_id,
-                    layout.source,
-                    layout.face_ratio,
+            with _time_limit(settings.render_clip_timeout_seconds):
+                source = download_clip(clip)
+                if source is None:
+                    failed += 1
+                    continue
+
+                streamer = streamers_by_login.get(login)
+                layout = detect_layout(
+                    source,
+                    streamer.facecam_override if streamer else None,
+                    settings.refine_cam_edges,
+                    streamer.facecam_box if streamer else None,
                 )
-            db.set_status(clip_id, "downloaded", layout=layout.as_dict())
+                if layout.needs_review:
+                    logger.warning(
+                        "clip %s facecam needs review: source=%s face_ratio=%s",
+                        clip_id,
+                        layout.source,
+                        layout.face_ratio,
+                    )
+                db.set_status(clip_id, "downloaded", layout=layout.as_dict())
 
-            if settings.skip_burned_captions and has_burned_captions(source):
-                logger.info(
-                    "clip %s burned-in captions detected; skipping our captions",
-                    clip_id,
+                if settings.skip_burned_captions and has_burned_captions(source):
+                    logger.info(
+                        "clip %s burned-in captions detected; skipping our captions",
+                        clip_id,
+                    )
+                    words = []
+                else:
+                    words = transcribe(source)
+                ass_path = build_ass(
+                    words, layout, source.parent / "captions.ass"
                 )
-                words = []
-            else:
-                words = transcribe(source)
-            ass_path = build_ass(
-                words, layout, source.parent / "captions.ass"
-            )
-            final_path = source.parent / "final.mp4"
-            thumb_path = source.parent / "thumb.jpg"
-            render_final(
-                source,
-                layout,
-                final_path,
-                thumb_path,
-                ass_path,
-            )
+                final_path = source.parent / "final.mp4"
+                thumb_path = source.parent / "thumb.jpg"
+                render_final(
+                    source,
+                    layout,
+                    final_path,
+                    thumb_path,
+                    ass_path,
+                )
 
-            metadata = build_youtube_metadata(clip)
-            video_url = put_file(
-                final_path, f"shorts/{clip_id}.mp4"
-            )
-            uploaded.append(video_url)
-            thumb_url = put_file(
-                thumb_path, f"shorts/{clip_id}.jpg"
-            )
-            uploaded.append(thumb_url)
+                metadata = build_youtube_metadata(clip)
+                video_url = put_file(final_path, f"shorts/{clip_id}.mp4")
+                uploaded.append(video_url)
+                thumb_url = put_file(
+                    thumb_path, f"shorts/{clip_id}.jpg"
+                )
+                uploaded.append(thumb_url)
 
-            db.set_status(
-                clip_id,
-                "rendered",
-                blob_url=video_url,
-                thumb_url=thumb_url,
-                yt_title=metadata.title,
-                yt_description=metadata.description,
-                yt_tags=metadata.tags,
-            )
+                db.set_status(
+                    clip_id,
+                    "rendered",
+                    blob_url=video_url,
+                    thumb_url=thumb_url,
+                    yt_title=metadata.title,
+                    yt_description=metadata.description,
+                    yt_tags=metadata.tags,
+                )
+                if auto_render:
+                    try:
+                        db.mark_auto_rendered(clip_id)
+                    except Exception:
+                        logger.exception(
+                            "clip %s rendered but auto-render marker failed",
+                            clip_id,
+                        )
+        except TimeoutError:
+            logger.error("clip %s render timed out", clip_id)
+            for url in uploaded:
+                try:
+                    delete_url(url)
+                except Exception:
+                    logger.warning(
+                        "clip %s could not delete uploaded blob", clip_id
+                    )
+            try:
+                db.set_status(clip_id, "failed", error="timed out")
+            except Exception:
+                logger.exception("clip %s failed to store timeout", clip_id)
+            failed += 1
+            continue
         except Exception as exc:
             logger.exception("clip %s render failed", clip_id)
             for url in uploaded:
@@ -179,7 +237,6 @@ def cmd_render(args: argparse.Namespace) -> int:
     print(f"Rendered and uploaded {rendered} clip(s), {failed} failed.")
     return 0
 
-
 def cmd_calibrate(args: argparse.Namespace) -> int:
     """Write a gridded calibration frame for choosing a facecam box."""
     image, streamer = run_calibrate(
@@ -200,10 +257,30 @@ def cmd_upload(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_upload_gate(args: argparse.Namespace) -> int:
+    """Run the lightweight upload preflight and print the decision."""
+    from clipmachine.upload_gate import run_gate
+
+    eligible, reason = run_gate()
+    print(f"eligible={'true' if eligible else 'false'} reason={reason}")
+    return 0
+
+
 def cmd_reddit(args: argparse.Namespace) -> int:
-    """Placeholder for the Reddit phase."""
-    print("reddit is not implemented yet.", file=sys.stderr)
-    return 2
+    """Enrich/import trending Twitch clips found on Reddit."""
+    config = load_config(args.config_dir)
+    client = TwitchClient()
+    game_id = client.get_game_id(config.settings.game_name)
+    enabled = [streamer for streamer in config.streamers if streamer.enabled]
+    user_ids = client.get_user_ids([s.twitch_login for s in enabled])
+    affected = run_reddit(
+        config.settings,
+        client,
+        game_id=game_id,
+        user_ids=user_ids,
+    )
+    print(f"Reddit affected {len(affected)} clip(s).")
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -246,6 +323,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     upload = subparsers.add_parser("upload", help="upload approved clips")
     upload.set_defaults(func=cmd_upload)
+
+    upload_gate = subparsers.add_parser(
+        "upload-gate", help="check upload window/cap/gap without heavy installs"
+    )
+    upload_gate.set_defaults(func=cmd_upload_gate)
 
     reddit = subparsers.add_parser("reddit", help="collect Reddit drops")
     reddit.set_defaults(func=cmd_reddit)

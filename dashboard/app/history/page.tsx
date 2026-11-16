@@ -52,6 +52,7 @@ function RejectedItem({ clip }: { clip: HistoryClip }) {
       </p>
       <p className="text-xs text-zinc-500">
         {clip.streamer_name} · rejected {formatAge(clip.updated_at)}
+        {clip.error ? ` · ${clip.error}` : ""}
       </p>
     </article>
   );

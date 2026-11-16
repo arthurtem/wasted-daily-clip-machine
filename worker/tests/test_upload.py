@@ -14,7 +14,24 @@ from clipmachine import upload
 
 def config() -> Any:
     """Return the config shape used by run_upload."""
-    return SimpleNamespace(settings=SimpleNamespace(uploads_per_run=2))
+    return SimpleNamespace(
+        settings=SimpleNamespace(
+            uploads_per_run=2,
+            max_uploads_per_day=25,
+            upload_window_start="00:00",
+            upload_window_end="23:59",
+            upload_timezone="Europe/Brussels",
+            min_minutes_between_uploads=0,
+            reddit_priority_hours=12,
+        )
+    )
+
+
+def allow_upload(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make the policy checks pass for uploader unit tests."""
+    monkeypatch.setattr(upload, "inside_window", lambda now, policy: True)
+    monkeypatch.setattr(upload.db, "count_uploads_since", lambda since: 0)
+    monkeypatch.setattr(upload.db, "latest_upload_at", lambda: None)
 
 
 CLIP = {
@@ -42,6 +59,7 @@ def test_no_connection_changes_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
     """No connection row exits without changing clips."""
     monkeypatch.setenv("UPLOAD_MODE", "api")
     monkeypatch.setattr(upload, "load_config", config)
+    allow_upload(monkeypatch)
     monkeypatch.setattr(upload.db, "get_youtube_connection", lambda: None)
     monkeypatch.setattr(
         upload.db, "get_clips", lambda *args: pytest.fail("should not fetch")
@@ -59,6 +77,7 @@ def test_invalid_grant_deletes_connection(
     """A revoked refresh token deletes the row and leaves clips approved."""
     monkeypatch.setenv("UPLOAD_MODE", "api")
     monkeypatch.setattr(upload, "load_config", config)
+    allow_upload(monkeypatch)
     monkeypatch.setattr(
         upload.db,
         "get_youtube_connection",
@@ -95,6 +114,7 @@ def test_success_marks_uploaded_and_deletes_blobs(
     """A successful upload stores the video id and removes both blobs."""
     monkeypatch.setenv("UPLOAD_MODE", "api")
     monkeypatch.setattr(upload, "load_config", config)
+    allow_upload(monkeypatch)
     monkeypatch.setattr(
         upload.db,
         "get_youtube_connection",
@@ -103,7 +123,9 @@ def test_success_marks_uploaded_and_deletes_blobs(
     monkeypatch.setattr(
         upload.youtube, "get_client", lambda connection: object()
     )
-    monkeypatch.setattr(upload.db, "get_clips", lambda status, limit: [CLIP])
+    monkeypatch.setattr(
+        upload.db, "get_approved_for_upload", lambda limit, hours: [CLIP]
+    )
     monkeypatch.setattr(
         upload.blob, "download_file", lambda url, target: target
     )
@@ -120,13 +142,11 @@ def test_success_marks_uploaded_and_deletes_blobs(
         return "video-id"
 
     monkeypatch.setattr(upload.youtube, "upload_short", fake_upload_short)
-    statuses: list[tuple[Any, ...]] = []
+    statuses: list[tuple[str, str]] = []
     monkeypatch.setattr(
         upload.db,
-        "set_status",
-        lambda clip_id, status, error=None, **fields: statuses.append(
-            (clip_id, status, error, fields)
-        ),
+        "mark_uploaded",
+        lambda clip_id, video_id: statuses.append((clip_id, video_id)),
     )
     deleted: list[str] = []
     monkeypatch.setattr(
@@ -136,7 +156,7 @@ def test_success_marks_uploaded_and_deletes_blobs(
     upload.run_upload()
 
     assert uploaded[0]["privacy"] == "unlisted"
-    assert ("ClipAbc", "uploaded", None, {"youtube_video_id": "video-id"}) in statuses
+    assert statuses == [("ClipAbc", "video-id")]
     assert deleted == [CLIP["blob_url"], CLIP["thumb_url"]]
 
 
@@ -144,6 +164,7 @@ def test_quota_error_stops_the_run(monkeypatch: pytest.MonkeyPatch) -> None:
     """quotaExceeded stops without marking the clip failed."""
     monkeypatch.setenv("UPLOAD_MODE", "api")
     monkeypatch.setattr(upload, "load_config", config)
+    allow_upload(monkeypatch)
     monkeypatch.setattr(
         upload.db,
         "get_youtube_connection",
@@ -152,9 +173,8 @@ def test_quota_error_stops_the_run(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         upload.youtube, "get_client", lambda connection: object()
     )
-    second = dict(CLIP, id="ClipSecond", blob_url="https://blob.example/2.mp4")
     monkeypatch.setattr(
-        upload.db, "get_clips", lambda status, limit: [CLIP, second]
+        upload.db, "get_approved_for_upload", lambda limit, hours: [CLIP]
     )
     downloads: list[str] = []
     monkeypatch.setattr(
@@ -180,3 +200,48 @@ def test_quota_error_stops_the_run(monkeypatch: pytest.MonkeyPatch) -> None:
     upload.run_upload()
 
     assert downloads == [CLIP["blob_url"]]
+
+
+def test_upload_limit_stops_without_failing_clip(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """uploadLimitExceeded leaves the approved clip retryable."""
+    monkeypatch.setenv("UPLOAD_MODE", "api")
+    monkeypatch.setattr(upload, "load_config", config)
+    allow_upload(monkeypatch)
+    monkeypatch.setattr(
+        upload.db,
+        "get_youtube_connection",
+        lambda: {"refresh_token_enc": "encrypted", "scopes": ""},
+    )
+    monkeypatch.setattr(
+        upload.youtube, "get_client", lambda connection: object()
+    )
+    monkeypatch.setattr(
+        upload.db, "get_approved_for_upload", lambda limit, hours: [CLIP]
+    )
+    monkeypatch.setattr(
+        upload.blob, "download_file", lambda url, target: target
+    )
+    error = HttpError(
+        Response({"status": 403}),
+        b'{"error":{"errors":[{"reason":"uploadLimitExceeded"}]}}',
+        uri="",
+    )
+    monkeypatch.setattr(
+        upload.youtube,
+        "upload_short",
+        lambda *args: (_ for _ in ()).throw(error),
+    )
+    monkeypatch.setattr(
+        upload.db,
+        "set_status",
+        lambda *args, **kwargs: pytest.fail("upload limit must not fail a clip"),
+    )
+    monkeypatch.setattr(
+        upload.db,
+        "mark_uploaded",
+        lambda *args, **kwargs: pytest.fail("upload limit must not mark uploaded"),
+    )
+
+    upload.run_upload()

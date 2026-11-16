@@ -1,0 +1,75 @@
+name: Render clips
+
+on:
+  workflow_dispatch:
+    inputs:
+      clip_ids:
+        description: Comma-separated clip ids (blank = all new)
+        required: false
+        type: string
+      auto_render:
+        description: Mark results as auto-rendered
+        required: false
+        type: string
+        default: "false"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clip-render
+  cancel-in-progress: false
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+      CLIP_IDS: ${{ inputs.clip_ids }}
+      AUTO_RENDER: ${{ inputs.auto_render == 'true' && '1' || '0' }}
+      WHISPER_CACHE_DIR: .cache/whisper
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check required secrets
+        run: |
+          missing=()
+          for var in DATABASE_URL BLOB_READ_WRITE_TOKEN; do
+            if [ -z "${!var}" ]; then
+              missing+=("$var")
+            fi
+          done
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "::error::Missing GitHub repository secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install system tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libgl1 libglib2.0-0 tesseract-ocr fonts-dejavu-core
+
+      - name: Cache faster-whisper model
+        uses: actions/cache@v4
+        with:
+          path: .cache/whisper
+          key: whisper-small-${{ runner.os }}-v1
+
+      - name: Install Blob helper
+        run: npm ci --prefix worker/scripts
+
+      - name: Install worker
+        run: pip install -e "worker"
+
+      - name: Render selected clips
+        run: python -m clipmachine render

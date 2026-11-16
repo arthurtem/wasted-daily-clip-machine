@@ -23,18 +23,20 @@ export default function RunButtons({
   youtubeConnected = false,
   showPipeline = true,
   defaultGame = DEFAULT_GAME_NAME,
+  defaultMinViews = 150,
 }: {
   uploadMode: UploadMode;
   readOnly?: boolean;
   youtubeConnected?: boolean;
   showPipeline?: boolean;
   defaultGame?: string;
+  defaultMinViews?: number;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<RunMessage | null>(null);
   const [gameName, setGameName] = useState(defaultGame);
-  const [minViews, setMinViews] = useState(200);
+  const [minViews, setMinViews] = useState(defaultMinViews);
   const [selectedStreamers, setSelectedStreamers] = useState<StreamerOption[]>(
     () => [...STREAMER_OPTIONS],
   );
@@ -43,12 +45,12 @@ export default function RunButtons({
     return null;
   }
 
-  async function run(workflow: "pipeline" | "upload") {
+  async function run(workflow: "fetch" | "upload") {
     setBusy(workflow);
     setMessage(null);
     try {
       const payload =
-        workflow === "pipeline"
+        workflow === "fetch"
           ? {
               game_name: gameName.trim(),
               min_views: minViews,
@@ -74,13 +76,13 @@ export default function RunButtons({
       }
       const status = data?.run?.status;
       const fetchSummary =
-        workflow === "pipeline"
+        workflow === "fetch"
           ? ` for ${gameName.trim()} / min ${minViews} views / ` +
             `${selectedStreamers.map((streamer) => streamer.login).join(", ")}`
           : "";
       setMessage({
         text:
-          workflow === "pipeline"
+          workflow === "fetch"
             ? `Fetch workflow queued${fetchSummary}${status ? ` (${status})` : ""}.`
             : `Upload workflow queued${status ? ` (${status})` : ""}.`,
         url: data?.run?.html_url ?? data?.workflow_url,
@@ -160,11 +162,11 @@ export default function RunButtons({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => run("pipeline")}
+              onClick={() => run("fetch")}
               disabled={busy !== null || !canFetch}
               className="rounded-xl bg-yellow-400 px-4 py-2.5 text-sm font-semibold text-zinc-950 transition hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {busy === "pipeline" ? "Starting…" : "Fetch selected clips"}
+              {busy === "fetch" ? "Starting…" : "Fetch clips"}
             </button>
             {uploadMode === "api" && youtubeConnected ? (
               <button

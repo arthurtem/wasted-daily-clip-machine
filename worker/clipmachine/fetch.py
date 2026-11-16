@@ -12,6 +12,7 @@ from typing import Any
 from clipmachine import db
 from clipmachine.config import Settings, Streamer, load_config
 from clipmachine.models import NewClip
+from clipmachine.reddit import run_reddit
 from clipmachine.twitch import TwitchClient, TwitchError
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,7 @@ class FetchResult:
     clips_found: int
     selected: int
     new_clips: int
+    auto_render_ids: list[str] | None = None
 
 
 def _as_int(value: Any) -> int:
@@ -80,13 +82,97 @@ def _to_new_clip(streamer: Streamer, clip: dict[str, Any]) -> NewClip | None:
         view_count=_as_int(clip.get("view_count")),
         duration_s=_as_float(clip.get("duration")),
         clip_created_at=_parse_timestamp(clip.get("created_at")),
+        thumbnail_url=(
+            str(clip.get("thumbnail_url"))
+            if clip.get("thumbnail_url")
+            else None
+        ),
     )
+
+
+def _scheduled_interval_skip(settings: Settings) -> bool:
+    """Return whether a scheduled fetch is inside the configured cooldown."""
+    if os.environ.get("FORCE_FETCH", "").strip() == "1":
+        return False
+    if os.environ.get("GITHUB_EVENT_NAME", "") != "schedule":
+        return False
+    if settings.fetch_interval_minutes <= 0:
+        return False
+    last = db.get_fetch_state()
+    if last is None:
+        return False
+    elapsed = datetime.now(timezone.utc) - last
+    if elapsed < timedelta(minutes=settings.fetch_interval_minutes):
+        logger.info(
+            "fetch skipped: last fetch %.1f minutes ago (interval=%d)",
+            elapsed.total_seconds() / 60,
+            settings.fetch_interval_minutes,
+        )
+        return True
+    return False
+
+
+def _select_auto_render(
+    settings: Settings, candidate_ids: list[str]
+) -> list[str]:
+    """Choose the hybrid auto-render set and write it for the workflow."""
+    auto_file = os.environ.get("AUTO_RENDER_IDS_FILE", "").strip()
+    if not auto_file:
+        return []
+    unique_ids = list(dict.fromkeys(candidate_ids))
+    if not unique_ids:
+        Path(auto_file).write_text("", encoding="utf-8")
+        return []
+    rows = db.get_new_clips_by_ids(unique_ids)
+    if not rows:
+        Path(auto_file).write_text("", encoding="utf-8")
+        return []
+    since = datetime.now(timezone.utc) - timedelta(hours=24)
+    used = db.count_auto_rendered_since(since)
+    remaining = max(0, settings.auto_render_max_per_day - used)
+    if remaining == 0:
+        logger.info("auto render skipped: daily cap %d reached", settings.auto_render_max_per_day)
+        Path(auto_file).write_text("", encoding="utf-8")
+        return []
+
+    reddit_rows = sorted(
+        [row for row in rows if row.get("reddit_score") is not None],
+        key=lambda row: (
+            _as_int(row.get("reddit_score")),
+            row.get("clip_created_at") or datetime.min.replace(tzinfo=timezone.utc),
+        ),
+        reverse=True,
+    )
+    top_rows = sorted(
+        rows, key=lambda row: _as_int(row.get("view_count")), reverse=True
+    )[: settings.auto_render_top_n]
+    selected: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in [*reddit_rows, *top_rows]:
+        clip_id = str(row.get("id") or "")
+        if not clip_id or clip_id in seen:
+            continue
+        seen.add(clip_id)
+        selected.append(row)
+    limit = min(settings.auto_render_max_per_run, remaining)
+    selected = selected[:limit]
+    ids = [str(row["id"]) for row in selected]
+    Path(auto_file).write_text("\n".join(ids), encoding="utf-8")
+    logger.info(
+        "auto render selected=%d remaining_daily=%d ids=%s",
+        len(ids),
+        remaining - len(ids),
+        ",".join(ids),
+    )
+    return ids
 
 
 def run_fetch(config_directory: Path | None = None) -> FetchResult:
     """Fetch, filter, and insert the top new clips from Twitch."""
     config = load_config(config_directory)
     settings = config.settings
+    if _scheduled_interval_skip(settings):
+        return FetchResult(0, 0, 0, 0, [])
     min_views_override = os.environ.get("MIN_VIEWS", "").strip()
     if min_views_override:
         try:
@@ -196,6 +282,7 @@ def run_fetch(config_directory: Path | None = None) -> FetchResult:
     selected = candidates[: settings.max_clips_per_run]
 
     new_clips = 0
+    inserted_ids: list[str] = []
     for streamer, clip in selected:
         new_clip = _to_new_clip(streamer, clip)
         if new_clip is None:
@@ -210,20 +297,45 @@ def run_fetch(config_directory: Path | None = None) -> FetchResult:
         except Exception:
             logger.exception("clip %s failed to insert", new_clip.id)
             continue
+        if inserted:
+            inserted_ids.append(new_clip.id)
         new_clips += int(inserted)
+
+    reddit_ids: list[str] = []
+    try:
+        reddit_ids = run_reddit(
+            settings,
+            client,
+            game_id=game_id,
+            user_ids=user_ids,
+        )
+    except Exception:
+        logger.exception("Reddit discovery failed; continuing with Twitch only")
+
+    auto_ids = _select_auto_render(
+        settings, [*inserted_ids, *reddit_ids]
+    )
+
+    if os.environ.get("GITHUB_EVENT_NAME"):
+        try:
+            db.set_fetch_state()
+        except Exception:
+            logger.exception("could not record fetch state")
 
     logger.info(
         "fetch summary: streamers=%d clips_found=%d selected=%d new=%d "
-        "min_views=%d",
+        "min_views=%d auto_render=%d",
         len(enabled),
         len(candidates),
         len(selected),
         new_clips,
         settings.min_views,
+        len(auto_ids),
     )
     return FetchResult(
         streamers_checked=len(enabled),
         clips_found=len(candidates),
         selected=len(selected),
         new_clips=new_clips,
+        auto_render_ids=auto_ids,
     )

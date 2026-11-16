@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getSql } from "@/lib/db";
+import { nextAllowedUpload, uploadPolicy } from "@/lib/upload-policy";
 import type {
   ApprovedClip,
   ClipForUpdate,
@@ -50,6 +51,8 @@ function toQueueClip(row: Row): QueueClip {
     view_count: asNumber(row.view_count),
     clip_created_at: asIso(row.clip_created_at),
     reddit_score: asNumber(row.reddit_score),
+    reddit_url: asNullableString(row.reddit_url),
+    thumbnail_url: asNullableString(row.thumbnail_url),
     blob_url: asNullableString(row.blob_url),
     thumb_url: asNullableString(row.thumb_url),
     yt_title: asNullableString(row.yt_title),
@@ -106,23 +109,61 @@ export async function getApprovedQueue(): Promise<ApprovedClip[]> {
   return rows.map(toApprovedClip);
 }
 
+export async function getNewClips(): Promise<QueueClip[]> {
+  const sql = getSql();
+  const rows = (await sql`
+    SELECT
+      id, clip_title, clip_url, streamer_login, streamer_name, view_count,
+      clip_created_at, reddit_score, reddit_url, thumbnail_url, blob_url,
+      thumb_url, yt_title, yt_description, yt_privacy
+    FROM clips
+    WHERE status = 'new'
+    ORDER BY clip_created_at DESC NULLS LAST, view_count DESC NULLS LAST
+    LIMIT 100
+  `) as Row[];
+  return rows.map(toQueueClip);
+}
+
 export async function getCounts(): Promise<Counts> {
   const sql = getSql();
   const rows = (await sql`
     SELECT
+      count(*) FILTER (WHERE status = 'new')::int AS new_count,
       count(*) FILTER (WHERE status = 'rendered')::int AS rendered,
       count(*) FILTER (WHERE status = 'approved')::int AS approved,
       count(*) FILTER (
-        WHERE status = 'uploaded' AND updated_at >= date_trunc('day', now())
-      )::int AS uploaded_today,
-      count(*) FILTER (WHERE status = 'failed')::int AS failed
+        WHERE status = 'uploaded'
+          AND COALESCE(uploaded_at, updated_at) >= now() - interval '24 hours'
+      )::int AS uploaded_last_24h,
+      count(*) FILTER (WHERE status = 'failed')::int AS failed,
+      max(COALESCE(uploaded_at, updated_at)) FILTER (WHERE status = 'uploaded') AS latest_upload,
+      min(COALESCE(uploaded_at, updated_at)) FILTER (
+        WHERE status = 'uploaded'
+          AND COALESCE(uploaded_at, updated_at) >= now() - interval '24 hours'
+      ) AS oldest_upload
     FROM clips
   `) as Row[];
   const row = rows[0] ?? {};
+  const policy = uploadPolicy();
+  const uploadedLast24h = asNumber(row.uploaded_last_24h) ?? 0;
+  const latest = row.latest_upload ? new Date(asIso(row.latest_upload) ?? "") : null;
+  const oldest = row.oldest_upload ? new Date(asIso(row.oldest_upload) ?? "") : null;
+  const next = nextAllowedUpload(
+    new Date(),
+    policy,
+    latest && !Number.isNaN(latest.getTime()) ? latest : null,
+    oldest && !Number.isNaN(oldest.getTime()) ? oldest : null,
+    uploadedLast24h,
+  );
   return {
+    new: asNumber(row.new_count) ?? 0,
     rendered: asNumber(row.rendered) ?? 0,
     approved: asNumber(row.approved) ?? 0,
-    uploadedToday: asNumber(row.uploaded_today) ?? 0,
+    uploadedLast24h,
+    maxUploadsPerDay: policy.maxUploadsPerDay,
+    nextUploadAt: next.toISOString(),
+    uploadWindowStart: policy.windowStart,
+    uploadWindowEnd: policy.windowEnd,
     failed: asNumber(row.failed) ?? 0,
   };
 }
@@ -203,6 +244,7 @@ export async function markPosted(
     SET
       status = 'uploaded',
       youtube_video_id = ${youtubeVideoId},
+      uploaded_at = now(),
       updated_at = now()
     WHERE id = ${id} AND status = 'approved'
     RETURNING id

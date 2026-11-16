@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Mapping
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,12 @@ UPDATABLE_FIELDS = frozenset(
         "youtube_video_id",
         "reddit_score",
         "reddit_url",
+        "reddit_id",
+        "reddit_subreddit",
+        "reddit_comments",
+        "thumbnail_url",
+        "uploaded_at",
+        "auto_rendered_at",
     }
 )
 MIGRATIONS_DIR_ENV = "MIGRATIONS_DIR"
@@ -94,8 +101,10 @@ def upsert_new_clip(clip: NewClip) -> bool:
     query = """
         INSERT INTO clips (
             id, source, streamer_login, streamer_name, clip_title, clip_url,
-            view_count, duration_s, clip_created_at
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            view_count, duration_s, clip_created_at, thumbnail_url,
+            reddit_score, reddit_url, reddit_id, reddit_subreddit,
+            reddit_comments
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (id) DO NOTHING
     """
     params = (
@@ -108,6 +117,12 @@ def upsert_new_clip(clip: NewClip) -> bool:
         clip.view_count,
         clip.duration_s,
         clip.clip_created_at,
+        clip.thumbnail_url,
+        clip.reddit_score,
+        clip.reddit_url,
+        clip.reddit_id,
+        clip.reddit_subreddit,
+        clip.reddit_comments,
     )
     with connect() as conn:
         inserted = conn.execute(query, params).rowcount == 1
@@ -181,3 +196,273 @@ def delete_youtube_connection() -> None:
     with connect() as conn:
         conn.execute("DELETE FROM youtube_connection WHERE id = 1")
     logger.info("deleted stored YouTube connection")
+
+
+
+def update_clip_metadata(
+    clip_id: str,
+    *,
+    thumbnail_url: str | None = None,
+    reddit_score: int | None = None,
+    reddit_url: str | None = None,
+    reddit_id: str | None = None,
+    reddit_subreddit: str | None = None,
+    reddit_comments: int | None = None,
+) -> bool:
+    """Refresh preview and Reddit metadata on an existing clip."""
+    with connect() as conn:
+        updated = conn.execute(
+            """
+            UPDATE clips
+            SET thumbnail_url = COALESCE(%s, thumbnail_url),
+                reddit_score = COALESCE(%s, reddit_score),
+                reddit_url = COALESCE(%s, reddit_url),
+                reddit_id = COALESCE(%s, reddit_id),
+                reddit_subreddit = COALESCE(%s, reddit_subreddit),
+                reddit_comments = COALESCE(%s, reddit_comments),
+                updated_at = now()
+            WHERE id = %s
+            """,
+            (
+                thumbnail_url,
+                reddit_score,
+                reddit_url,
+                reddit_id,
+                reddit_subreddit,
+                reddit_comments,
+                clip_id,
+            ),
+        ).rowcount == 1
+    return updated
+
+
+def get_new_clips(limit: int = 100) -> list[dict[str, Any]]:
+    """Return imported clips that have not been rendered yet."""
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+        raise ValueError("limit must be a positive integer")
+    with connect(row_factory=dict_row) as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM clips
+            WHERE status = 'new'
+            ORDER BY clip_created_at DESC NULLS LAST, view_count DESC
+            LIMIT %s
+            """,
+            (limit,),
+        ).fetchall()
+    return list(rows)
+
+
+def get_new_clips_by_ids(clip_ids: list[str]) -> list[dict[str, Any]]:
+    """Return new clips with the given ids in caller order."""
+    cleaned = [str(clip_id) for clip_id in clip_ids if str(clip_id)]
+    if not cleaned:
+        return []
+    with connect(row_factory=dict_row) as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM clips
+            WHERE status = 'new' AND id = ANY(%s)
+            """,
+            (cleaned,),
+        ).fetchall()
+    by_id = {str(row["id"]): dict(row) for row in rows}
+    return [by_id[clip_id] for clip_id in cleaned if clip_id in by_id]
+
+
+def get_approved_for_upload(
+    limit: int, reddit_priority_hours: int
+) -> list[dict[str, Any]]:
+    """Return approved clips in upload priority order."""
+    with connect(row_factory=dict_row) as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM clips
+            WHERE status = 'approved'
+            ORDER BY
+                CASE
+                    WHEN reddit_score IS NOT NULL
+                     AND clip_created_at >= now() - make_interval(hours => %s)
+                    THEN 0
+                    ELSE 1
+                END,
+                clip_created_at DESC NULLS LAST,
+                created_at DESC
+            LIMIT %s
+            """,
+            (reddit_priority_hours, limit),
+        ).fetchall()
+    return list(rows)
+
+
+def count_uploads_since(since: datetime) -> int:
+    """Count uploaded clips since an instant."""
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT count(*) FROM clips WHERE status = 'uploaded' AND uploaded_at >= %s",
+            (since,),
+        ).fetchone()
+    return int(row[0]) if row else 0
+
+
+def latest_upload_at() -> datetime | None:
+    """Return the most recent successful upload time."""
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT max(uploaded_at) FROM clips WHERE status = 'uploaded'"
+        ).fetchone()
+    return row[0] if row else None
+
+
+def oldest_upload_since(since: datetime) -> datetime | None:
+    """Return the oldest upload in the rolling window."""
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT min(uploaded_at) FROM clips WHERE status = 'uploaded' AND uploaded_at >= %s",
+            (since,),
+        ).fetchone()
+    return row[0] if row else None
+
+
+def mark_uploaded(clip_id: str, youtube_video_id: str) -> bool:
+    """Mark an approved clip uploaded and record the upload time."""
+    with connect() as conn:
+        updated = conn.execute(
+            """
+            UPDATE clips
+            SET status = 'uploaded', youtube_video_id = %s,
+                uploaded_at = now(), updated_at = now()
+            WHERE id = %s AND status = 'approved'
+            """,
+            (youtube_video_id, clip_id),
+        ).rowcount == 1
+    return updated
+
+
+def count_auto_rendered_since(since: datetime) -> int:
+    """Count successful auto-renders since an instant."""
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT count(*) FROM clips WHERE auto_rendered_at >= %s",
+            (since,),
+        ).fetchone()
+    return int(row[0]) if row else 0
+
+
+def mark_auto_rendered(clip_id: str) -> bool:
+    """Record that a clip was rendered by the auto-render path."""
+    with connect() as conn:
+        updated = conn.execute(
+            "UPDATE clips SET auto_rendered_at = now() WHERE id = %s",
+            (clip_id,),
+        ).rowcount == 1
+    return updated
+
+
+def get_stale_clips(stale_after_hours: int, limit: int = 100) -> list[dict[str, Any]]:
+    """Return approved/rendered clips older than the freshness cutoff."""
+    with connect(row_factory=dict_row) as conn:
+        rows = conn.execute(
+            """
+            SELECT id, status, blob_url, thumb_url, clip_created_at
+            FROM clips
+            WHERE status IN ('approved', 'rendered')
+              AND clip_created_at IS NOT NULL
+              AND clip_created_at < now() - make_interval(hours => %s)
+            ORDER BY clip_created_at ASC
+            LIMIT %s
+            """,
+            (stale_after_hours, limit),
+        ).fetchall()
+    return list(rows)
+
+
+def mark_stale(clip_id: str, *, clear_blobs: bool = True) -> bool:
+    """Reject a stale clip, optionally clearing its blob URLs."""
+    fields = "status = 'rejected', error = 'stale', updated_at = now()"
+    if clear_blobs:
+        fields += ", blob_url = NULL, thumb_url = NULL"
+    with connect() as conn:
+        updated = conn.execute(
+            f"UPDATE clips SET {fields} WHERE id = %s",
+            (clip_id,),
+        ).rowcount == 1
+    logger.info("clip %s marked stale", clip_id)
+    return updated
+
+
+def get_stale_rejected_with_blobs(limit: int = 100) -> list[dict[str, Any]]:
+    """Return rejected stale clips whose blob cleanup previously failed."""
+    with connect(row_factory=dict_row) as conn:
+        rows = conn.execute(
+            """
+            SELECT id, blob_url, thumb_url FROM clips
+            WHERE status = 'rejected' AND error = 'stale'
+              AND (blob_url IS NOT NULL OR thumb_url IS NOT NULL)
+            LIMIT %s
+            """,
+            (limit,),
+        ).fetchall()
+    return list(rows)
+
+
+def recover_stale_downloads(minutes: int = 30) -> int:
+    """Mark abandoned download rows timed out so they can be retried."""
+    with connect() as conn:
+        count = conn.execute(
+            """
+            UPDATE clips
+            SET status = 'failed', error = 'timed out', updated_at = now()
+            WHERE status = 'downloaded'
+              AND updated_at < now() - make_interval(mins => %s)
+            """,
+            (minutes,),
+        ).rowcount
+    if count:
+        logger.warning("recovered %d stale downloaded clip(s)", count)
+    return count
+
+
+def get_fetch_state() -> datetime | None:
+    """Return the last successful fetch time."""
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT last_fetch_at FROM fetch_state WHERE id = TRUE"
+        ).fetchone()
+    return row[0] if row else None
+
+
+def set_fetch_state(when: datetime | None = None) -> None:
+    """Record a successful fetch time."""
+    with connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO fetch_state (id, last_fetch_at, updated_at)
+            VALUES (TRUE, COALESCE(%s, now()), now())
+            ON CONFLICT (id) DO UPDATE
+            SET last_fetch_at = COALESCE(EXCLUDED.last_fetch_at, now()),
+                updated_at = now()
+            """,
+            (when,),
+        )
+
+
+
+def clear_blob_urls(clip_id: str) -> bool:
+    """Clear blob URLs after a successful cleanup retry."""
+    with connect() as conn:
+        updated = conn.execute(
+            "UPDATE clips SET blob_url = NULL, thumb_url = NULL, updated_at = now() WHERE id = %s",
+            (clip_id,),
+        ).rowcount == 1
+    return updated
+
+
+
+def get_clip(clip_id: str) -> dict[str, Any] | None:
+    """Return one clip row."""
+    with connect(row_factory=dict_row) as conn:
+        row = conn.execute(
+            "SELECT * FROM clips WHERE id = %s LIMIT 1", (clip_id,)
+        ).fetchone()
+    return dict(row) if row else None
