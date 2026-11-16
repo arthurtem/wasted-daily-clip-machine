@@ -19,12 +19,19 @@ logger = logging.getLogger(__name__)
 SAMPLE_FRAME_COUNT = 15
 MIN_DETECTION_CONFIDENCE = 0.6
 CLUSTER_DISTANCE_FRACTION = 0.08
-MIN_CLUSTER_FRAME_FRACTION = 0.5
+MIN_CLUSTER_FRAME_FRACTION = 0.35
 FULL_FACE_AREA_FRACTION = 0.06
-CAM_WIDTH_FACTOR = 2.6
-CAM_HEIGHT_FACTOR = 2.4
+CAM_WIDTH_FACTOR = 4.2
+CAM_HEIGHT_FACTOR = 2.8
 EDGE_SNAP_FRACTION = 0.12
 REFINE_BAND_FRACTION = 0.15
+MAX_FACECAM_EDGE_DISTANCE = 0.30
+CROP_REGIONS = (
+    (0.0, 0.0, 0.55, 0.65),
+    (0.45, 0.0, 0.55, 0.65),
+    (0.0, 0.35, 0.55, 0.65),
+    (0.45, 0.35, 0.55, 0.65),
+)
 MIN_VERIFIED_FACE_FRACTION = 0.5
 CORNER_OVERRIDES = frozenset(
     {"top-left", "top-right", "bottom-left", "bottom-right"}
@@ -242,35 +249,129 @@ def _sample_frames(
         capture.release()
 
 
+def _iou(left: Box, right: Box) -> float:
+    """Return intersection-over-union for two boxes."""
+    lx, ly, lw, lh = left
+    rx, ry, rw, rh = right
+    x1 = max(lx, rx)
+    y1 = max(ly, ry)
+    x2 = min(lx + lw, rx + rw)
+    y2 = min(ly + lh, ry + rh)
+    if x2 <= x1 or y2 <= y1:
+        return 0.0
+    intersection = (x2 - x1) * (y2 - y1)
+    union = lw * lh + rw * rh - intersection
+    return intersection / union if union else 0.0
+
+
 def _detect_faces(
     frames: list[Frame], frame_w: int, frame_h: int
 ) -> list[DetectedFace]:
-    """Run full-range MediaPipe face detection and keep the largest face per frame."""
+    """Detect faces in full frames and corner/quadrant crops.
+
+    Facecam overlays are often too small for full-frame detection, so each
+    sampled frame is also scanned with four overlapping crops and boxes are
+    mapped back into full-frame coordinates.
+    """
     faces: list[DetectedFace] = []
-    with mp.solutions.face_detection.FaceDetection(
-        model_selection=1,
-        min_detection_confidence=MIN_DETECTION_CONFIDENCE,
-    ) as detector:
-        for index, frame in enumerate(frames):
-            result = detector.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-            best: DetectedFace | None = None
-            for detection in result.detections or []:
-                bbox = detection.location_data.relative_bounding_box
-                x1 = int(round(bbox.xmin * frame_w))
-                y1 = int(round(bbox.ymin * frame_h))
-                x2 = int(round((bbox.xmin + bbox.width) * frame_w))
-                y2 = int(round((bbox.ymin + bbox.height) * frame_h))
-                x1 = max(0, min(x1, frame_w - 1))
-                y1 = max(0, min(y1, frame_h - 1))
-                x2 = max(x1 + 1, min(x2, frame_w))
-                y2 = max(y1 + 1, min(y2, frame_h))
-                box = (x1, y1, x2 - x1, y2 - y1)
-                score = float(detection.score[0]) if detection.score else 0.0
-                if best is None or box[2] * box[3] > best[1][2] * best[1][3]:
-                    best = (index, box, score)
-            if best is not None:
-                faces.append(best)
+    regions: list[tuple[int, int, int, int]] = [(0, 0, frame_w, frame_h)]
+    for x_fraction, y_fraction, w_fraction, h_fraction in CROP_REGIONS:
+        x0 = int(round(x_fraction * frame_w))
+        y0 = int(round(y_fraction * frame_h))
+        x1 = min(frame_w, int(round((x_fraction + w_fraction) * frame_w)))
+        y1 = min(frame_h, int(round((y_fraction + h_fraction) * frame_h)))
+        if x1 - x0 >= 32 and y1 - y0 >= 32:
+            regions.append((x0, y0, x1 - x0, y1 - y0))
+
+    for model_selection in (0, 1):
+        with mp.solutions.face_detection.FaceDetection(
+            model_selection=model_selection,
+            min_detection_confidence=MIN_DETECTION_CONFIDENCE,
+        ) as detector:
+            for index, frame in enumerate(frames):
+                for x0, y0, region_w, region_h in regions:
+                    crop = frame[y0 : y0 + region_h, x0 : x0 + region_w]
+                    if crop.size == 0:
+                        continue
+                    result = detector.process(
+                        cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+                    )
+                    for detection in result.detections or []:
+                        bbox = detection.location_data.relative_bounding_box
+                        rx1 = int(round(bbox.xmin * region_w)) + x0
+                        ry1 = int(round(bbox.ymin * region_h)) + y0
+                        rx2 = int(round((bbox.xmin + bbox.width) * region_w)) + x0
+                        ry2 = int(round((bbox.ymin + bbox.height) * region_h)) + y0
+                        rx1 = max(0, min(rx1, frame_w - 1))
+                        ry1 = max(0, min(ry1, frame_h - 1))
+                        rx2 = max(rx1 + 1, min(rx2, frame_w))
+                        ry2 = max(ry1 + 1, min(ry2, frame_h))
+                        box = (rx1, ry1, rx2 - rx1, ry2 - ry1)
+                        score = (
+                            float(detection.score[0])
+                            if detection.score
+                            else 0.0
+                        )
+                        duplicate = any(
+                            face[0] == index and _iou(face[1], box) > 0.5
+                            for face in faces
+                        )
+                        if not duplicate:
+                            faces.append((index, box, score))
     return faces
+
+
+
+def _cluster_frame_count(cluster: list[DetectedFace]) -> int:
+    """Return the number of distinct sampled frames in a cluster."""
+    return len({face[0] for face in cluster})
+
+
+def _cluster_area_ratio(cluster: list[DetectedFace], frame_w: int, frame_h: int) -> float:
+    """Return the average face area ratio for a cluster."""
+    if not cluster:
+        return 0.0
+    area = sum(face[1][2] * face[1][3] for face in cluster) / len(cluster)
+    return area / float(frame_w * frame_h)
+
+
+def _cluster_edge_distance(cluster: list[DetectedFace], frame_w: int, frame_h: int) -> float:
+    """Return normalized distance from the cluster center to the nearest edge."""
+    if not cluster:
+        return 1.0
+    cx = sum(face[1][0] + face[1][2] / 2 for face in cluster) / len(cluster)
+    cy = sum(face[1][1] + face[1][3] / 2 for face in cluster) / len(cluster)
+    left = cx / frame_w
+    right = 1.0 - left
+    top = cy / frame_h
+    bottom = 1.0 - top
+    return max(0.0, min(left, right, top, bottom))
+
+
+def choose_cam_cluster(
+    clusters: list[list[DetectedFace]], frame_w: int, frame_h: int
+) -> list[DetectedFace]:
+    """Prefer a persistent, small, edge-adjacent face cluster (a facecam)."""
+    if not clusters:
+        return []
+    candidates = [
+        cluster
+        for cluster in clusters
+        if _cluster_area_ratio(cluster, frame_w, frame_h)
+        <= FULL_FACE_AREA_FRACTION
+        and _cluster_edge_distance(cluster, frame_w, frame_h)
+        <= MAX_FACECAM_EDGE_DISTANCE
+    ]
+    if not candidates:
+        return []
+    return max(
+        candidates,
+        key=lambda cluster: (
+            _cluster_frame_count(cluster),
+            -_cluster_edge_distance(cluster, frame_w, frame_h),
+        ),
+    )
+
 
 
 def _snap_side(value: int, candidates: list[int], tolerance: float) -> int:
@@ -370,7 +471,7 @@ def verify_cam_box(frames: list[Frame], cam_box: Box) -> float:
     x, y, width, height = cam_box
     hits = 0
     with mp.solutions.face_detection.FaceDetection(
-        model_selection=1,
+        model_selection=0,
         min_detection_confidence=MIN_DETECTION_CONFIDENCE,
     ) as detector:
         for frame in frames:
@@ -453,9 +554,29 @@ def detect_layout(
         )
 
     faces = _detect_faces(frames, frame_w, frame_h)
-    cluster = largest_cluster(faces, frame_w)
+    clusters = cluster_faces(faces, frame_w)
+    cluster = choose_cam_cluster(clusters, frame_w, frame_h)
     total = len(frames)
-    confidence = len(cluster) / total if total else 0.0
+    matched_frames = _cluster_frame_count(cluster)
+    confidence = matched_frames / total if total else 0.0
+
+    if not cluster and clusters:
+        fallback = max(clusters, key=_cluster_frame_count)
+        fallback_frames = _cluster_frame_count(fallback)
+        fallback_area = _cluster_area_ratio(fallback, frame_w, frame_h)
+        if (
+            fallback_frames / total >= MIN_CLUSTER_FRAME_FRACTION
+            and fallback_area > FULL_FACE_AREA_FRACTION
+        ):
+            cluster = fallback
+            matched_frames = fallback_frames
+            confidence = fallback_frames / total
+            logger.info(
+                "clip %s using full_face fallback cluster frames=%d area=%.3f",
+                clip_id,
+                fallback_frames,
+                fallback_area,
+            )
 
     if cluster:
         avg_x = sum(face[1][0] for face in cluster) / len(cluster)
@@ -463,7 +584,7 @@ def detect_layout(
         avg_w = sum(face[1][2] for face in cluster) / len(cluster)
         avg_h = sum(face[1][3] for face in cluster) / len(cluster)
         avg_area_ratio = (avg_w * avg_h) / float(frame_w * frame_h)
-        kind = decide_kind(len(cluster), total, avg_area_ratio)
+        kind = decide_kind(matched_frames, total, avg_area_ratio)
     else:
         avg_x = avg_y = avg_w = avg_h = 0.0
         avg_area_ratio = 0.0

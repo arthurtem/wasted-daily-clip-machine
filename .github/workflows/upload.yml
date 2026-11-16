@@ -8,10 +8,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: youtube-upload
-  cancel-in-progress: false
-
 jobs:
   preflight:
     runs-on: ubuntu-latest

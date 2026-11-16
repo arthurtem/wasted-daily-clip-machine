@@ -122,6 +122,12 @@ Per streamer, use either `facecam_override` (`top-left`, `top-right`,
 fractions of the frame (for cams that are not flush in a corner). Setting both
 is an error. A box skips face detection and crops exactly that region.
 
+For streamers not in `streamers.yaml`, auto-detection scans the full frame plus
+four overlapping corner/quadrant crops, uses both MediaPipe face models, and
+prefers a small persistent face near an edge. That is what separates an
+unknown streamer's facecam from gameplay; centered in-game faces alone are
+treated as `no_cam`.
+
 To onboard a streamer, run `calibrate <twitch_login>` (add `--clip-id ID` to
 reuse a downloaded clip). It writes `calibrate.jpg` with a 100px grid and the
 current box in green; read the box coordinates off it and set `facecam_box`.

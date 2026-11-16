@@ -28,30 +28,30 @@ def test_large_faces_is_full_face() -> None:
     assert decide_kind(14, 15, 0.12) == "full_face"
 
 
-def test_half_coverage_boundary() -> None:
-    """Exactly half of the frames is enough to keep looking for a cam."""
-    assert decide_kind(7, 15, 0.01) == "no_cam"
-    assert decide_kind(8, 15, 0.01) == "cam_top"
+def test_partial_coverage_boundary() -> None:
+    """A facecam can be detected in a third of the sampled frames."""
+    assert decide_kind(5, 15, 0.01) == "no_cam"
+    assert decide_kind(6, 15, 0.01) == "cam_top"
 
 
 def test_corner_box_snaps_to_top_left_edges() -> None:
     """An expanded box near the top-left corner snaps to both edges."""
-    assert build_cam_box((100, 100, 100, 100), 1920, 1080) == (0, 0, 260, 240)
+    assert build_cam_box((100, 100, 100, 100), 1920, 1080) == (0, 0, 420, 280)
 
 
 def test_centered_box_is_not_snapped() -> None:
     """A face away from the frame edges keeps its expanded box."""
-    assert build_cam_box((860, 490, 100, 100), 1920, 1080) == (780, 420, 260, 240)
+    assert build_cam_box((860, 490, 100, 100), 1920, 1080) == (700, 400, 420, 280)
 
 
 def test_right_edge_is_snapped() -> None:
     """A box whose right edge is near the frame edge snaps right."""
-    assert build_cam_box((1700, 490, 100, 100), 1920, 1080) == (1660, 420, 260, 240)
+    assert build_cam_box((1700, 490, 100, 100), 1920, 1080) == (1500, 400, 420, 280)
 
 
 def test_box_is_clamped_inside_the_frame() -> None:
     """An oversized expansion is clamped to the frame bounds."""
-    assert build_cam_box((1800, 980, 100, 100), 1920, 1080) == (1660, 840, 260, 240)
+    assert build_cam_box((1800, 980, 100, 100), 1920, 1080) == (1500, 800, 420, 280)
 
 
 def test_preset_boxes_for_corners() -> None:
@@ -187,3 +187,30 @@ def test_layout_serializes_verification_fields() -> None:
     assert payload["source"] == "box"
     assert payload["face_ratio"] == 0.75
     assert payload["needs_review"] is False
+
+
+def test_choose_cam_cluster_prefers_edge_facecam() -> None:
+    """A small persistent face near an edge wins over a centered game face."""
+    from clipmachine.facecam import choose_cam_cluster
+
+    centered = [
+        (index, (860, 440, 200, 200), 0.9) for index in range(15)
+    ]
+    facecam = [
+        (index, (80, 60, 100, 100), 0.9) for index in range(10)
+    ]
+
+    chosen = choose_cam_cluster([centered, facecam], 1920, 1080)
+
+    assert chosen == facecam
+
+
+def test_choose_cam_cluster_rejects_centered_only_face() -> None:
+    """A centered game-character face is not treated as a facecam."""
+    from clipmachine.facecam import choose_cam_cluster
+
+    centered = [
+        (index, (860, 440, 200, 200), 0.9) for index in range(15)
+    ]
+
+    assert choose_cam_cluster([centered], 1920, 1080) == []
