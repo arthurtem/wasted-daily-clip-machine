@@ -383,5 +383,5 @@ def test_category_scope_filters_language_and_resolves_logins(
 
     assert [clip.id for clip in upserts] == ["en-high", "en-low"]
     assert upserts[0].streamer_login == "englishguy"
-    assert result.streamers_checked == 1
+    assert result.streamers_checked == 2
     assert result.clips_found == 2

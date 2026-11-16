@@ -238,18 +238,29 @@ def run_fetch(config_directory: Path | None = None) -> FetchResult:
     if settings.clip_scope == "category":
         raw_clips = client.get_game_clips(game_id, started_at, ended_at)
         rejected_language = 0
+        rejected_game = 0
+        rejected_views = 0
+        rejected_duration = 0
         streamer_by_login: dict[str, Streamer] = {}
-        all_logins: set[str] = set()
+        seen_logins: set[str] = set()
         for clip in raw_clips:
+            login = _clip_login(clip)
+            if login:
+                seen_logins.add(login)
             if not _language_ok(settings, clip):
                 rejected_language += 1
                 continue
-            if not _keep(clip, game_id, settings):
+            if clip.get("game_id") != game_id:
+                rejected_game += 1
                 continue
-            login = _clip_login(clip)
+            if _as_int(clip.get("view_count")) < settings.min_views:
+                rejected_views += 1
+                continue
+            if _as_float(clip.get("duration")) > settings.max_clip_seconds:
+                rejected_duration += 1
+                continue
             if not login:
                 continue
-            all_logins.add(login)
             streamer = config_by_login.get(login)
             if streamer is None:
                 streamer = Streamer(
@@ -263,13 +274,17 @@ def run_fetch(config_directory: Path | None = None) -> FetchResult:
             candidates.append((streamer, clip))
         logger.info(
             "category fetch summary: found=%d kept=%d rejected_language=%d "
-            "streamers=%d",
+            "rejected_game=%d rejected_views=%d rejected_duration=%d "
+            "streamers_seen=%d",
             len(raw_clips),
             len(candidates),
             rejected_language,
-            len(streamer_by_login),
+            rejected_game,
+            rejected_views,
+            rejected_duration,
+            len(seen_logins),
         )
-        streamers_checked = len(streamer_by_login)
+        streamers_checked = len(seen_logins)
     else:
         selected_logins = list(
             dict.fromkeys(
