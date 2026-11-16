@@ -73,10 +73,15 @@ export default function RunButtons({
         throw new Error(data?.error ?? `Request failed (${response.status})`);
       }
       const status = data?.run?.status;
+      const fetchSummary =
+        workflow === "pipeline"
+          ? ` for ${gameName.trim()} / min ${minViews} views / ` +
+            `${selectedStreamers.map((streamer) => streamer.login).join(", ")}`
+          : "";
       setMessage({
         text:
           workflow === "pipeline"
-            ? `Fetch workflow queued${status ? ` (${status})` : ""}.`
+            ? `Fetch workflow queued${fetchSummary}${status ? ` (${status})` : ""}.`
             : `Upload workflow queued${status ? ` (${status})` : ""}.`,
         url: data?.run?.html_url ?? data?.workflow_url,
       });
@@ -139,6 +144,13 @@ export default function RunButtons({
             Until GTA VI launches on 19 November 2026, choose Grand Theft Auto
             V. Testing may need min views 0.
           </p>
+          {gameName.trim().toLowerCase() === "grand theft auto v" &&
+          minViews > 0 ? (
+            <p className="text-xs text-amber-300">
+              GTA V clips usually have under 200 views. Set min views to 0 to
+              fetch them.
+            </p>
+          ) : null}
 
           <StreamerSearch
             selected={selectedStreamers}

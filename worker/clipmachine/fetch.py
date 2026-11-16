@@ -98,6 +98,14 @@ def run_fetch(config_directory: Path | None = None) -> FetchResult:
         settings = replace(settings, min_views=min_views)
     client = TwitchClient()
     game_id = client.get_game_id(settings.game_name)
+    logger.info(
+        "fetch filters: game=%s min_views=%d max_clip_seconds=%d "
+        "lookback_hours=%d",
+        settings.game_name,
+        settings.min_views,
+        settings.max_clip_seconds,
+        settings.lookback_hours,
+    )
 
     selected_logins = list(
         dict.fromkeys(
@@ -156,11 +164,29 @@ def run_fetch(config_directory: Path | None = None) -> FetchResult:
             continue
         clips = client.get_clips(broadcaster_id, started_at, ended_at)
         kept = [clip for clip in clips if _keep(clip, game_id, settings)]
+        wrong_game = sum(
+            1 for clip in clips if clip.get("game_id") != game_id
+        )
+        low_views = sum(
+            1
+            for clip in clips
+            if _as_int(clip.get("view_count")) < settings.min_views
+        )
+        too_long = sum(
+            1
+            for clip in clips
+            if _as_float(clip.get("duration"))
+            > settings.max_clip_seconds
+        )
         logger.info(
-            "clip fetch streamer=%s clips=%d kept=%d",
+            "clip fetch streamer=%s clips=%d kept=%d rejected_game=%d "
+            "rejected_views=%d rejected_duration=%d",
             streamer.twitch_login,
             len(clips),
             len(kept),
+            wrong_game,
+            low_views,
+            too_long,
         )
         candidates.extend((streamer, clip) for clip in kept)
 
@@ -187,11 +213,13 @@ def run_fetch(config_directory: Path | None = None) -> FetchResult:
         new_clips += int(inserted)
 
     logger.info(
-        "fetch summary: streamers=%d clips_found=%d selected=%d new=%d",
+        "fetch summary: streamers=%d clips_found=%d selected=%d new=%d "
+        "min_views=%d",
         len(enabled),
         len(candidates),
         len(selected),
         new_clips,
+        settings.min_views,
     )
     return FetchResult(
         streamers_checked=len(enabled),
