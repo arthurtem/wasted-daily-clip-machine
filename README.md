@@ -71,7 +71,7 @@ Twitch category names verified for launch:
 
 Switching game/min views is configuration/environment only; no code change.
 
-The fetch panel has two scopes:
+Testing is currently configured for **Grand Theft Auto V, all languages**. The fetch panel has two scopes:
 - **Category top clips** (default): all clips in the game category over the last
   24 hours via Helix `game_id`, sorted by Twitch views. This matches Twitch's
   category clips page without scraping it.

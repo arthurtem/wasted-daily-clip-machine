@@ -1,8 +1,8 @@
-game_name: "Grand Theft Auto VI"
+game_name: "Grand Theft Auto V"
 lookback_hours: 24
 min_views: 150
 clip_scope: "category"
-clip_language: "en"
+clip_language: "all"
 max_clips_per_run: 20
 max_clip_seconds: 60
 uploads_per_run: 1
@@ -29,7 +29,7 @@ refine_cam_edges: true
 skip_burned_captions: true
 auto_approve: true
 automation_enabled: true
-automation_launch_date: "2026-11-19"
+automation_launch_date: "2026-11-16"
 automation_start_upload_cap: 75
 automation_ramp_per_day: 10
 automation_max_upload_cap: 100

@@ -527,7 +527,9 @@ def ensure_automation_state(
             INSERT INTO automation_state
                 (id, launch_date, upload_cap, fetch_limit, render_limit)
             VALUES (TRUE, %s, %s, %s, %s)
-            ON CONFLICT (id) DO NOTHING
+            ON CONFLICT (id) DO UPDATE SET
+                launch_date = EXCLUDED.launch_date,
+                updated_at = now()
             """,
             (launch_date, upload_cap, fetch_limit, render_limit),
         )
