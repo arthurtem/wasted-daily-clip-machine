@@ -1,8 +1,8 @@
-game_name: "Grand Theft Auto V"
+game_name: "Grand Theft Auto VI"
 lookback_hours: 24
 min_views: 150
 clip_scope: "category"
-clip_language: "all"
+clip_language: "en"
 max_clips_per_run: 20
 max_clip_seconds: 60
 uploads_per_run: 1
@@ -35,3 +35,8 @@ automation_ramp_per_day: 10
 automation_max_upload_cap: 100
 automation_fetch_limit: 20
 automation_render_limit: 20
+xqc_dump_until: "2026-11-18"
+xqc_dump_login: "xqc247"
+xqc_dump_lookback_hours: 168
+xqc_dump_min_views: 0
+xqc_dump_stale_after_hours: 10000

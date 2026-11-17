@@ -5,7 +5,8 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -70,6 +71,12 @@ class Settings:
     automation_max_upload_cap: int = 100
     automation_fetch_limit: int = 20
     automation_render_limit: int = 20
+    xqc_dump_until: str = ""
+    xqc_dump_login: str = "xqc247"
+    xqc_dump_lookback_hours: int = 168
+    xqc_dump_min_views: int = 0
+    xqc_dump_stale_after_hours: int = 10000
+    active_xqc_dump: bool = False
     reddit_enabled: bool = True
     reddit_subreddits: tuple[str, ...] = ("LivestreamFail", "GTA6")
     reddit_lookback_hours: int = 24
@@ -299,6 +306,12 @@ def load_settings(
     automation_launch_date = data.get("automation_launch_date", "2026-11-19")
     if not isinstance(automation_launch_date, str):
         raise ConfigError(f"{path}: automation_launch_date must be a date string")
+    xqc_dump_until = data.get("xqc_dump_until", "")
+    if not isinstance(xqc_dump_until, str):
+        raise ConfigError(f"{path}: xqc_dump_until must be a date string")
+    xqc_dump_login = data.get("xqc_dump_login", "xqc247")
+    if not isinstance(xqc_dump_login, str) or not xqc_dump_login.strip():
+        raise ConfigError(f"{path}: xqc_dump_login must be a non-empty string")
 
     return Settings(
         game_name=game_name.strip(),
@@ -337,6 +350,15 @@ def load_settings(
         automation_render_limit=optional_int(
             "automation_render_limit", 20, 1
         ),
+        xqc_dump_until=xqc_dump_until.strip(),
+        xqc_dump_login=xqc_dump_login.strip().lower(),
+        xqc_dump_lookback_hours=optional_int(
+            "xqc_dump_lookback_hours", 168, 1
+        ),
+        xqc_dump_min_views=optional_int("xqc_dump_min_views", 0),
+        xqc_dump_stale_after_hours=optional_int(
+            "xqc_dump_stale_after_hours", 10000, 1
+        ),
         reddit_enabled=reddit_enabled,
         reddit_subreddits=tuple(item.strip() for item in reddit_subreddits),
         reddit_lookback_hours=optional_int("reddit_lookback_hours", 24, 1),
@@ -346,6 +368,39 @@ def load_settings(
     )
 
 
+
+def apply_temporary_overrides(
+    settings: Settings, now: datetime | None = None
+) -> Settings:
+    """Apply the temporary xqc247 GTA V dump through its last date."""
+    if not settings.xqc_dump_until:
+        return settings
+    try:
+        last_day = date.fromisoformat(settings.xqc_dump_until)
+    except ValueError:
+        raise ConfigError(
+            f"xqc_dump_until must be YYYY-MM-DD; got {settings.xqc_dump_until!r}"
+        )
+    now = now or datetime.now(timezone.utc)
+    if now.date() > last_day:
+        return settings
+    logger.info(
+        "temporary xqc dump active through %s: login=%s lookback=%dh",
+        last_day,
+        settings.xqc_dump_login,
+        settings.xqc_dump_lookback_hours,
+    )
+    return replace(
+        settings,
+        game_name="Grand Theft Auto V",
+        clip_scope="streamers",
+        clip_language="all",
+        lookback_hours=settings.xqc_dump_lookback_hours,
+        min_views=settings.xqc_dump_min_views,
+        stale_after_hours=settings.xqc_dump_stale_after_hours,
+        active_xqc_dump=True,
+    )
+
 def load_config(
     directory: Path | None = None, environ: Mapping[str, str] | None = None
 ) -> AppConfig:
@@ -353,6 +408,7 @@ def load_config(
     resolved = config_dir(directory)
     streamers = load_streamers(resolved / "streamers.yaml")
     settings = load_settings(resolved / "settings.yaml", environ=environ)
+    settings = apply_temporary_overrides(settings)
     logger.info(
         "loaded config from %s: %d streamers, game=%s",
         resolved,
