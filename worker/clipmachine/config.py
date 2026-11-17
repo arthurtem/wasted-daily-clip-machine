@@ -73,6 +73,7 @@ class Settings:
     automation_render_limit: int = 20
     xqc_dump_until: str = ""
     xqc_dump_login: str = "xqc247"
+    xqc_dump_game_ids: tuple[str, ...] = ("32982", "499973")
     xqc_dump_lookback_hours: int = 168
     xqc_dump_min_views: int = 0
     xqc_dump_stale_after_hours: int = 10000
@@ -312,6 +313,13 @@ def load_settings(
     xqc_dump_login = data.get("xqc_dump_login", "xqc247")
     if not isinstance(xqc_dump_login, str) or not xqc_dump_login.strip():
         raise ConfigError(f"{path}: xqc_dump_login must be a non-empty string")
+    xqc_dump_game_ids = data.get(
+        "xqc_dump_game_ids", ["32982", "499973"]
+    )
+    if not isinstance(xqc_dump_game_ids, list) or not all(
+        isinstance(item, str) and item.strip() for item in xqc_dump_game_ids
+    ):
+        raise ConfigError(f"{path}: xqc_dump_game_ids must be a list of ids")
 
     return Settings(
         game_name=game_name.strip(),
@@ -352,6 +360,9 @@ def load_settings(
         ),
         xqc_dump_until=xqc_dump_until.strip(),
         xqc_dump_login=xqc_dump_login.strip().lower(),
+        xqc_dump_game_ids=tuple(
+            item.strip() for item in xqc_dump_game_ids
+        ),
         xqc_dump_lookback_hours=optional_int(
             "xqc_dump_lookback_hours", 168, 1
         ),

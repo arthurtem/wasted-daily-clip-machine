@@ -57,11 +57,18 @@ def _parse_timestamp(value: Any) -> datetime | None:
 
 
 def _keep(
-    clip: dict[str, Any], game_id: str | None, settings: Settings
+    clip: dict[str, Any],
+    game_filter: str | tuple[str, ...] | None,
+    settings: Settings,
 ) -> bool:
     """Return whether a raw clip passes the game, views, and duration filters."""
+    game_ok = game_filter is None or (
+        clip.get("game_id") in game_filter
+        if isinstance(game_filter, tuple)
+        else clip.get("game_id") == game_filter
+    )
     return (
-        (game_id is None or clip.get("game_id") == game_id)
+        game_ok
         and _as_int(clip.get("view_count")) >= settings.min_views
         and _as_float(clip.get("duration")) <= settings.max_clip_seconds
     )
@@ -185,8 +192,10 @@ def run_fetch(config_directory: Path | None = None) -> FetchResult:
 
     client = TwitchClient()
     game_id = client.get_game_id(settings.game_name)
-    game_filter: str | None = (
-        None if getattr(settings, "active_xqc_dump", False) else game_id
+    game_filter: str | tuple[str, ...] | None = (
+        tuple(settings.xqc_dump_game_ids)
+        if getattr(settings, "active_xqc_dump", False)
+        else game_id
     )
     logger.info(
         "fetch filters: scope=%s language=%s game=%s min_views=%d "
@@ -260,7 +269,11 @@ def run_fetch(config_directory: Path | None = None) -> FetchResult:
         streamers_checked = len(seen_logins)
     else:
         if getattr(settings, "active_xqc_dump", False):
-            selected_logins = [settings.xqc_dump_login]
+            selected_logins = [
+                login.strip().lower()
+                for login in settings.xqc_dump_login.split(",")
+                if login.strip()
+            ]
         else:
             selected_logins = list(
                 dict.fromkeys(
@@ -314,7 +327,11 @@ def run_fetch(config_directory: Path | None = None) -> FetchResult:
                 else sum(
                     1
                     for clip in clips
-                    if clip.get("game_id") != game_id
+                    if (
+                        clip.get("game_id") not in game_filter
+                        if isinstance(game_filter, tuple)
+                        else clip.get("game_id") != game_id
+                    )
                 )
             )
             low_views = sum(
