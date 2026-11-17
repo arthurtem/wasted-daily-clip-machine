@@ -257,11 +257,12 @@ search results outside `config/streamers.yaml` are resolved by Twitch.
 so it appears in the recent-runs panel.
 
 `render.yml` renders selected clip ids or all new clips, subject to
-`max_render_per_run` (20). `upload.yml` runs every 10 minutes 24/7, uploads one
-approved clip per run, and uses the adaptive daily cap from
-`automation_state` (75 → 85 → 95 → 100). The preflight job is lightweight and
-checks expiry/cap/gap before installing the full worker. On quota or channel
-limit errors it stops, leaves clips approved, and freezes the ramp.
+`max_render_per_run` (20). `upload.yml` has no cron. When a render finishes,
+it checks the upload gate and starts an upload chain only if approved clips
+exist. Each run uploads one clip, waits 10 minutes before the next slot, and
+queues another run only while approved clips remain. It stops when the queue is
+empty, the cap is reached, or YouTube reports a quota/upload-limit error. This
+avoids firing skipped upload workflows every 10 minutes.
 
 Upload order is:
 1. Clips with `reddit_score` and `clip_created_at` within
