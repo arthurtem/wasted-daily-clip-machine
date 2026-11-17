@@ -330,6 +330,14 @@ def run_fetch(config_directory: Path | None = None) -> FetchResult:
     candidates.sort(
         key=lambda item: _as_int(item[1].get("view_count")), reverse=True
     )
+    existing_ids = db.get_existing_clip_ids(
+        [str(clip.get("id")) for _, clip in candidates if clip.get("id")]
+    )
+    candidates = [
+        (streamer, clip)
+        for streamer, clip in candidates
+        if str(clip.get("id") or "") not in existing_ids
+    ]
     selected = candidates[: settings.max_clips_per_run]
 
     new_clips = 0

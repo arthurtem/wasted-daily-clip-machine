@@ -120,6 +120,11 @@ def install(
     monkeypatch.setattr(fetch, "load_config", lambda directory=None: config)
     monkeypatch.setattr(fetch, "TwitchClient", lambda: client)
     monkeypatch.setattr(fetch.db, "upsert_new_clip", fake_upsert)
+    monkeypatch.setattr(
+        fetch.db,
+        "get_existing_clip_ids",
+        lambda clip_ids: existing & {str(clip_id) for clip_id in clip_ids},
+    )
     return upserts
 
 
@@ -205,8 +210,8 @@ def test_existing_ids_are_not_counted(monkeypatch: pytest.MonkeyPatch) -> None:
 
     result = fetch.run_fetch()
 
-    assert len(upserts) == 2
-    assert result.selected == 2
+    assert [clip.id for clip in upserts] == ["fresh"]
+    assert result.selected == 1
     assert result.new_clips == 1
 
 

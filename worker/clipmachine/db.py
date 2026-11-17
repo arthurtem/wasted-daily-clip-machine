@@ -574,3 +574,16 @@ def record_upload_limit_error(kind: str) -> None:
         conn.execute(
             f"UPDATE automation_state SET {column} = now(), updated_at = now() WHERE id = TRUE"
         )
+
+
+
+def get_existing_clip_ids(clip_ids: list[str]) -> set[str]:
+    """Return which clip ids already exist in the database."""
+    cleaned = [str(clip_id) for clip_id in clip_ids if clip_id]
+    if not cleaned:
+        return set()
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT id FROM clips WHERE id = ANY(%s)", (cleaned,)
+        ).fetchall()
+    return {str(row[0]) for row in rows}
