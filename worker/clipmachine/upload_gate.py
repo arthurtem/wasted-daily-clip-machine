@@ -28,10 +28,16 @@ def run_gate() -> tuple[bool, str]:
     if mode != "api":
         return False, "manual mode"
 
+    state = db.get_automation_state() or {}
+    now = datetime.now(timezone.utc)
+    for key in ("last_upload_limit_at", "last_quota_error_at"):
+        value = state.get(key)
+        if isinstance(value, datetime) and now - value < timedelta(minutes=30):
+            return False, "YouTube limit pause"
+
     policy = replace(
         policy_from_settings(settings), max_uploads_per_day=limits.upload_cap
     )
-    now = datetime.now(timezone.utc)
     if not inside_window(now, policy):
         return False, "outside upload window"
 

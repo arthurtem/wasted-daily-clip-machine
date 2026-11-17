@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
   render:
@@ -69,3 +70,14 @@ jobs:
 
       - name: Render selected clips
         run: python -m clipmachine render
+
+      - name: Check for approved clips
+        id: upload_gate
+        run: PYTHONPATH=worker python -m clipmachine.upload_gate
+
+      - name: Start upload chain
+        if: steps.upload_gate.outputs.eligible == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run upload.yml             --repo "$GITHUB_REPOSITORY"             --ref main             -f delay=false

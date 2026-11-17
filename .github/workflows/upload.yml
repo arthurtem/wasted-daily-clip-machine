@@ -2,11 +2,16 @@ name: Upload approved clips
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "*/10 * * * *"
+    inputs:
+      delay:
+        description: Wait one upload slot before uploading
+        required: false
+        type: string
+        default: "false"
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
   preflight:
@@ -56,7 +61,7 @@ jobs:
     needs: preflight
     if: needs.preflight.outputs.eligible == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 30
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
@@ -94,5 +99,23 @@ jobs:
       - name: Install worker
         run: pip install -e "worker"
 
-      - name: Upload approved clips
+      - name: Wait for next upload slot
+        if: inputs.delay == 'true'
+        run: sleep 600
+
+      - name: Upload approved clip
         run: python -m clipmachine upload
+
+      - name: Check for another approved clip
+        id: next
+        run: PYTHONPATH=worker python -m clipmachine.upload_gate
+
+      - name: Queue the next upload
+        if: steps.next.outputs.eligible == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run upload.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f delay=true
