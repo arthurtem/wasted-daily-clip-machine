@@ -56,10 +56,12 @@ def _parse_timestamp(value: Any) -> datetime | None:
         return None
 
 
-def _keep(clip: dict[str, Any], game_id: str, settings: Settings) -> bool:
+def _keep(
+    clip: dict[str, Any], game_id: str | None, settings: Settings
+) -> bool:
     """Return whether a raw clip passes the game, views, and duration filters."""
     return (
-        clip.get("game_id") == game_id
+        (game_id is None or clip.get("game_id") == game_id)
         and _as_int(clip.get("view_count")) >= settings.min_views
         and _as_float(clip.get("duration")) <= settings.max_clip_seconds
     )
@@ -183,6 +185,9 @@ def run_fetch(config_directory: Path | None = None) -> FetchResult:
 
     client = TwitchClient()
     game_id = client.get_game_id(settings.game_name)
+    game_filter: str | None = (
+        None if getattr(settings, "active_xqc_dump", False) else game_id
+    )
     logger.info(
         "fetch filters: scope=%s language=%s game=%s min_views=%d "
         "max_clip_seconds=%d lookback_hours=%d",
@@ -302,9 +307,15 @@ def run_fetch(config_directory: Path | None = None) -> FetchResult:
                 )
                 continue
             clips = client.get_clips(broadcaster_id, started_at, ended_at)
-            kept = [clip for clip in clips if _keep(clip, game_id, settings)]
-            wrong_game = sum(
-                1 for clip in clips if clip.get("game_id") != game_id
+            kept = [clip for clip in clips if _keep(clip, game_filter, settings)]
+            wrong_game = (
+                0
+                if game_filter is None
+                else sum(
+                    1
+                    for clip in clips
+                    if clip.get("game_id") != game_id
+                )
             )
             low_views = sum(
                 1
