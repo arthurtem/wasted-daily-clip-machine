@@ -254,13 +254,16 @@ def run_fetch(config_directory: Path | None = None) -> FetchResult:
         )
         streamers_checked = len(seen_logins)
     else:
-        selected_logins = list(
-            dict.fromkeys(
-                login.strip().lower()
-                for login in os.environ.get("STREAMERS", "").split(",")
-                if login.strip()
+        if getattr(settings, "active_xqc_dump", False):
+            selected_logins = [settings.xqc_dump_login]
+        else:
+            selected_logins = list(
+                dict.fromkeys(
+                    login.strip().lower()
+                    for login in os.environ.get("STREAMERS", "").split(",")
+                    if login.strip()
+                )
             )
-        )
         if selected_logins:
             unknown = [
                 login for login in selected_logins if login not in config_by_login
