@@ -1,6 +1,6 @@
 game_name: "Grand Theft Auto VI"
 lookback_hours: 24
-min_views: 150
+min_views: 75
 clip_scope: "category"
 clip_language: "en"
 max_clips_per_run: 20
