@@ -29,7 +29,7 @@ refine_cam_edges: true
 skip_burned_captions: true
 auto_approve: true
 automation_enabled: true
-automation_launch_date: "2026-11-16"
+automation_launch_date: "2026-11-15"
 automation_start_upload_cap: 75
 automation_ramp_per_day: 10
 automation_max_upload_cap: 100
