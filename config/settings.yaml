@@ -35,7 +35,7 @@ automation_ramp_per_day: 10
 automation_max_upload_cap: 100
 automation_fetch_limit: 20
 automation_render_limit: 20
-xqc_dump_until: "2026-11-18"
+xqc_dump_until: ""
 xqc_dump_game_ids: ["32982"]
 xqc_dump_login: "xqc"
 xqc_dump_lookback_hours: 168
