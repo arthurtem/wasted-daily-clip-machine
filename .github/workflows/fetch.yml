@@ -20,7 +20,7 @@ on:
         required: false
         type: string
   schedule:
-    - cron: "0 */4 * * *"
+    - cron: "0 * * * *"
 
 permissions:
   contents: read

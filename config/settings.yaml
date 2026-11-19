@@ -3,7 +3,7 @@ lookback_hours: 24
 min_views: 75
 clip_scope: "category"
 clip_language: "en"
-max_clips_per_run: 20
+max_clips_per_run: 30
 max_clip_seconds: 60
 uploads_per_run: 1
 max_uploads_per_day: 100
@@ -17,9 +17,9 @@ stale_after_hours: 36
 auto_render_top_n: 20
 auto_render_max_per_run: 20
 auto_render_max_per_day: 120
-max_render_per_run: 20
+max_render_per_run: 30
 render_clip_timeout_seconds: 600
-fetch_interval_minutes: 230
+fetch_interval_minutes: 55
 reddit_enabled: true
 reddit_subreddits: ["LivestreamFail", "GTA6"]
 reddit_lookback_hours: 24
@@ -38,8 +38,8 @@ automation_launch_date: "2026-11-15"
 automation_start_upload_cap: 75
 automation_ramp_per_day: 10
 automation_max_upload_cap: 100
-automation_fetch_limit: 20
-automation_render_limit: 20
+automation_fetch_limit: 30
+automation_render_limit: 30
 xqc_dump_until: ""
 xqc_dump_game_ids: ["32982"]
 xqc_dump_login: "xqc"
