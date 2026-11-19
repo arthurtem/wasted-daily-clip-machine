@@ -361,3 +361,49 @@ def test_upload_time_moderation_downgrades_borderline(
 
     assert privacies == ["unlisted"]
     assert stored == [("ClipAbc", "unlisted")]
+
+
+def test_upload_time_text_gate_rejects_sexual_title(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An approved clip with sexual wording is rejected before download."""
+    monkeypatch.setenv("UPLOAD_MODE", "api")
+    monkeypatch.setattr(upload, "load_config", config)
+    allow_upload(monkeypatch)
+    monkeypatch.setattr(
+        upload.db,
+        "get_youtube_connection",
+        lambda: {"refresh_token_enc": "encrypted", "scopes": ""},
+    )
+    monkeypatch.setattr(
+        upload.youtube, "get_client", lambda connection: object()
+    )
+    risky_clip = dict(CLIP, yt_title="18+ GTA 6 First Nude Showering Scene")
+    monkeypatch.setattr(
+        upload.db, "get_approved_for_upload", lambda limit, hours: [risky_clip]
+    )
+    monkeypatch.setattr(
+        upload.blob,
+        "download_file",
+        lambda *args: pytest.fail("risky clip must not download"),
+    )
+    monkeypatch.setattr(
+        upload.youtube,
+        "upload_short",
+        lambda *args: pytest.fail("risky clip must not upload"),
+    )
+    statuses: list[tuple[object, ...]] = []
+
+    def fake_status(
+        clip_id: str, status: str, error: str | None = None, **fields: Any
+    ) -> bool:
+        statuses.append((clip_id, status, error, fields))
+        return True
+
+    monkeypatch.setattr(upload.db, "set_status", fake_status)
+    monkeypatch.setattr(upload.blob, "delete_url", lambda url: None)
+
+    upload.run_upload()
+
+    assert statuses[0][1] == "rejected"
+    assert statuses[0][2] == "moderation: title:18+"

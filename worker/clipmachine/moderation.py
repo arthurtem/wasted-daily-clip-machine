@@ -9,6 +9,7 @@ preview image cannot be what gets the channel flagged.
 from __future__ import annotations
 
 import logging
+import re
 import subprocess
 import tempfile
 from collections.abc import Iterable
@@ -36,6 +37,60 @@ EXPOSED_LABELS = frozenset(
         "BUTTOCKS_EXPOSED",
         "ANUS_EXPOSED",
     }
+)
+
+RISKY_TERMS = (
+    "18+",
+    "anal",
+    "bikini",
+    "blowjob",
+    "boob",
+    "boobs",
+    "booty",
+    "brothel",
+    "cock",
+    "dick",
+    "dildo",
+    "fuck",
+    "fucking",
+    "gone wild",
+    "handjob",
+    "hardcore",
+    "hentai",
+    "horny",
+    "lingerie",
+    "milf",
+    "naked",
+    "nakedness",
+    "nipple",
+    "nipples",
+    "nsfw",
+    "nude",
+    "nudes",
+    "nudity",
+    "onlyfans",
+    "orgy",
+    "peg",
+    "pegging",
+    "porn",
+    "porno",
+    "pussy",
+    "sex",
+    "sex scene",
+    "sexual",
+    "sexy",
+    "shower scene",
+    "strip club",
+    "stripper",
+    "thot",
+    "tits",
+    "twerk",
+    "xxx",
+)
+
+_RISKY_TEXT = re.compile(
+    r"(?<![a-z])(" + "|".join(re.escape(term) for term in RISKY_TERMS) + r")(?![a-z])",
+    re.IGNORECASE,
 )
 
 _LEVEL_RANK = {CLEAN: 0, BORDERLINE: 1, EXPLICIT: 2}
@@ -92,6 +147,17 @@ class ClipScreening:
     def unlisted(self) -> bool:
         """Return whether the clip should only be uploaded as unlisted."""
         return self.level == BORDERLINE
+
+
+def risky_text(*values: object) -> str | None:
+    """Return the first sexual term found in clip text, if any."""
+    for value in values:
+        if not value:
+            continue
+        match = _RISKY_TEXT.search(str(value))
+        if match:
+            return match.group(0).lower()
+    return None
 
 
 def verdict_from_detections(

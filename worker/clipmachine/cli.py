@@ -208,6 +208,27 @@ def _cmd_render(args: argparse.Namespace) -> int:
                     continue
 
                 metadata = build_youtube_metadata(clip)
+                risky = moderation.risky_text(
+                    clip.get("clip_title"), metadata.title
+                )
+                if risky:
+                    db.set_status(
+                        clip_id,
+                        "rejected",
+                        error=f"moderation: title:{risky}",
+                        moderation_level=moderation.EXPLICIT,
+                        moderation_score=1.0,
+                        moderation_labels=f"title:{risky}",
+                    )
+                    logger.warning(
+                        "clip %s rejected for sexual title term %r",
+                        clip_id,
+                        risky,
+                    )
+                    rejected += 1
+                    _cleanup_work_dir(source.parent)
+                    continue
+
                 video_url = put_file(final_path, f"shorts/{clip_id}.mp4")
                 uploaded.append(video_url)
                 thumb_url = put_file(

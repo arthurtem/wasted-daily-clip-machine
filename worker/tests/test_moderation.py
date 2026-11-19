@@ -215,3 +215,23 @@ def test_screen_clip_borderline_when_thumbnail_cannot_be_replaced(
     assert result.level == moderation.BORDERLINE
     assert result.unlisted is True
     assert result.blocked is False
+
+
+def test_risky_text_matches_sexual_terms() -> None:
+    """Sexual wording in clip titles is caught before upload."""
+    assert moderation.risky_text("pegging in gta 6 gone wild") == "pegging"
+    assert (
+        moderation.risky_text("18+ GTA 6 First Nude Showering Scene") == "18+"
+    )
+    assert (
+        moderation.risky_text("ohnePixel tries out the strip club's")
+        == "strip club"
+    )
+    assert moderation.risky_text("i see dick hype") == "dick"
+
+
+def test_risky_text_ignores_benign_titles() -> None:
+    """Ordinary streamer titles are not blocked."""
+    assert moderation.risky_text("IShowSpeed in GTA 6") is None
+    assert moderation.risky_text("cars have security systems?") is None
+    assert moderation.risky_text(None, "") is None

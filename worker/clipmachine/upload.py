@@ -132,6 +132,34 @@ def _run_upload() -> None:
             logger.error("clip %s has no blob_url", clip_id)
             continue
 
+        risky = moderation.risky_text(
+            clip.get("clip_title"),
+            clip.get("yt_title"),
+            clip.get("yt_description"),
+        )
+        if risky:
+            db.set_status(
+                clip_id,
+                "rejected",
+                error=f"moderation: title:{risky}",
+                moderation_level=moderation.EXPLICIT,
+                moderation_score=1.0,
+                moderation_labels=f"title:{risky}",
+            )
+            for url in (clip.get("blob_url"), clip.get("thumb_url")):
+                if not url:
+                    continue
+                try:
+                    blob.delete_url(str(url))
+                except Exception:
+                    logger.warning(
+                        "clip %s could not delete blob %s", clip_id, url
+                    )
+            logger.warning(
+                "clip %s rejected for sexual title term %r", clip_id, risky
+            )
+            continue
+
         target = clip_dir(clip_id) / "youtube.mp4"
         try:
             blob.download_file(str(blob_url), target)
