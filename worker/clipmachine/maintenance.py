@@ -86,6 +86,21 @@ def check_upload_statuses(
         db.mark_youtube_rejected(str(clip["id"]), f"youtube:{reason}")
         rejected.append(str(clip["id"]))
 
+    if statuses:
+        for video_id, clip in by_video.items():
+            if video_id in statuses:
+                continue
+            db.mark_youtube_rejected(str(clip["id"]), "youtube:removed")
+            rejected.append(str(clip["id"]))
+            logger.error(
+                "clip %s is no longer available on YouTube", clip["id"]
+            )
+
+    logger.info(
+        "checked %d recent upload(s): %d removed or rejected",
+        len(by_video),
+        len(rejected),
+    )
     if rejected:
         db.pause_automation(pause_hours)
         logger.error(

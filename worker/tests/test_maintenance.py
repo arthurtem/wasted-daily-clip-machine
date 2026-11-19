@@ -100,3 +100,65 @@ def test_check_upload_statuses_ignores_processed_videos(
     )
 
     assert maintenance.check_upload_statuses(object()) == []
+
+
+def test_check_upload_statuses_flags_missing_videos(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A video YouTube deleted outright is still flagged as removed."""
+    clips = [
+        {"id": "kept", "youtube_video_id": "vid1"},
+        {"id": "gone", "youtube_video_id": "vid2"},
+    ]
+    monkeypatch.setattr(
+        maintenance.db, "get_recent_uploads", lambda since, limit=50: clips
+    )
+    monkeypatch.setattr(
+        "clipmachine.youtube.get_video_statuses",
+        lambda client, ids: {"vid1": {"status": {"uploadStatus": "processed"}}},
+    )
+    marked: list[tuple[str, str]] = []
+    paused: list[int] = []
+    monkeypatch.setattr(
+        maintenance.db,
+        "mark_youtube_rejected",
+        lambda clip_id, reason: marked.append((clip_id, reason)),
+    )
+    monkeypatch.setattr(
+        maintenance.db,
+        "pause_automation",
+        lambda hours: paused.append(hours),
+    )
+
+    assert maintenance.check_upload_statuses(object(), pause_hours=6) == ["gone"]
+    assert marked == [("gone", "youtube:removed")]
+    assert paused == [6]
+
+
+def test_check_upload_statuses_ignores_empty_api_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An empty status response is treated as an API problem, not mass removal."""
+    monkeypatch.setattr(
+        maintenance.db,
+        "get_recent_uploads",
+        lambda since, limit=50: [
+            {"id": "kept", "youtube_video_id": "vid1"},
+        ],
+    )
+    monkeypatch.setattr(
+        "clipmachine.youtube.get_video_statuses",
+        lambda client, ids: {},
+    )
+    monkeypatch.setattr(
+        maintenance.db,
+        "mark_youtube_rejected",
+        lambda *args: pytest.fail("empty response must not mark clips"),
+    )
+    monkeypatch.setattr(
+        maintenance.db,
+        "pause_automation",
+        lambda *args: pytest.fail("empty response must not pause"),
+    )
+
+    assert maintenance.check_upload_statuses(object()) == []
