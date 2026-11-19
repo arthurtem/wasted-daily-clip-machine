@@ -164,6 +164,11 @@ def run_fetch(config_directory: Path | None = None) -> FetchResult:
     """Fetch, filter, and insert the top new clips from Twitch."""
     config = load_config(config_directory)
     settings = config.settings
+    if db.automation_paused():
+        logger.warning(
+            "automation is paused after a YouTube strike; skipping fetch"
+        )
+        return FetchResult(0, 0, 0, 0, [])
     if _scheduled_interval_skip(settings):
         return FetchResult(0, 0, 0, 0, [])
 

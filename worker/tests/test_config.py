@@ -225,10 +225,10 @@ def test_moderation_defaults(config_dir: Path) -> None:
     settings = load_settings(config_dir / "settings.yaml")
 
     assert settings.moderation_enabled is True
-    assert settings.moderation_frames == 10
-    assert settings.moderation_explicit_threshold == pytest.approx(0.5)
-    assert settings.moderation_review_threshold == pytest.approx(0.3)
-    assert settings.moderation_pause_hours == 24
+    assert settings.moderation_frames == 60
+    assert settings.moderation_explicit_threshold == pytest.approx(0.35)
+    assert settings.moderation_review_threshold == pytest.approx(0.25)
+    assert settings.moderation_pause_hours == 168
 
 
 def test_out_of_range_moderation_threshold_is_rejected(tmp_path: Path) -> None:

@@ -65,10 +65,10 @@ class Settings:
     fetch_interval_minutes: int = 90
     auto_approve: bool = False
     moderation_enabled: bool = True
-    moderation_frames: int = 10
-    moderation_explicit_threshold: float = 0.50
-    moderation_review_threshold: float = 0.30
-    moderation_pause_hours: int = 24
+    moderation_frames: int = 60
+    moderation_explicit_threshold: float = 0.35
+    moderation_review_threshold: float = 0.25
+    moderation_pause_hours: int = 168
     automation_enabled: bool = False
     automation_launch_date: str = "2026-11-19"
     automation_start_upload_cap: int = 75
@@ -368,14 +368,14 @@ def load_settings(
         fetch_interval_minutes=optional_int("fetch_interval_minutes", 90),
         auto_approve=auto_approve,
         moderation_enabled=moderation_enabled,
-        moderation_frames=optional_int("moderation_frames", 10, 1),
+        moderation_frames=optional_int("moderation_frames", 60, 1),
         moderation_explicit_threshold=optional_float(
-            "moderation_explicit_threshold", 0.50
+            "moderation_explicit_threshold", 0.35
         ),
         moderation_review_threshold=optional_float(
-            "moderation_review_threshold", 0.30
+            "moderation_review_threshold", 0.25
         ),
-        moderation_pause_hours=optional_int("moderation_pause_hours", 24, 1),
+        moderation_pause_hours=optional_int("moderation_pause_hours", 168, 1),
         automation_enabled=automation_enabled,
         automation_launch_date=automation_launch_date,
         automation_start_upload_cap=optional_int(

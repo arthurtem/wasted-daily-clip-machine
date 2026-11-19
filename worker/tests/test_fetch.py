@@ -118,6 +118,7 @@ def install(
         return clip.id not in existing
 
     monkeypatch.setattr(fetch, "load_config", lambda directory=None: config)
+    monkeypatch.setattr(fetch.db, "automation_paused", lambda: False)
     monkeypatch.setattr(fetch, "TwitchClient", lambda: client)
     monkeypatch.setattr(fetch.db, "upsert_new_clip", fake_upsert)
     monkeypatch.setattr(
@@ -390,3 +391,23 @@ def test_category_scope_filters_language_and_resolves_logins(
     assert upserts[0].streamer_login == "englishguy"
     assert result.streamers_checked == 2
     assert result.clips_found == 2
+
+
+def test_fetch_skips_while_paused(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A strike pause stops fetching and render scheduling."""
+    streamers = [Streamer(name="xQc", twitch_login="xqc")]
+    monkeypatch.setattr(
+        fetch, "load_config", lambda directory=None: make_config(streamers)
+    )
+    monkeypatch.setattr(fetch.db, "automation_paused", lambda: True)
+    monkeypatch.setattr(
+        fetch, "TwitchClient", lambda: pytest.fail("paused fetch must not call Twitch")
+    )
+    monkeypatch.setattr(
+        fetch.db, "upsert_new_clip", lambda clip: pytest.fail("paused fetch must not insert")
+    )
+
+    result = fetch.run_fetch()
+
+    assert result.new_clips == 0
+    assert result.clips_found == 0

@@ -29,10 +29,10 @@ refine_cam_edges: true
 skip_burned_captions: true
 auto_approve: true
 moderation_enabled: true
-moderation_frames: 10
-moderation_explicit_threshold: 0.5
-moderation_review_threshold: 0.3
-moderation_pause_hours: 24
+moderation_frames: 60
+moderation_explicit_threshold: 0.35
+moderation_review_threshold: 0.25
+moderation_pause_hours: 168
 automation_enabled: true
 automation_launch_date: "2026-11-15"
 automation_start_upload_cap: 75
