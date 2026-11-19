@@ -12,6 +12,7 @@ from typing import Any
 from googleapiclient.errors import HttpError
 
 from clipmachine import automation, blob, db, moderation, youtube
+from clipmachine import thumbnail as thumbnails
 from clipmachine.config import load_config
 from clipmachine.download import clip_dir
 from clipmachine.maintenance import check_upload_statuses
@@ -34,6 +35,43 @@ def _tags(clip: dict[str, Any]) -> list[str]:
     """Return a clean list of YouTube tags."""
     value = clip.get("yt_tags")
     return [str(tag) for tag in value] if isinstance(value, list) else []
+
+
+def _wants_custom_thumbnail() -> bool:
+    """Return whether this run should compose and set a custom thumbnail."""
+    return os.environ.get("YT_SET_THUMBNAIL", "").strip() == "1"
+
+
+def _apply_custom_thumbnail(
+    client: Any, clip: dict[str, Any], video_id: str, work_dir: Path
+) -> bool:
+    """Compose a branded thumbnail from the clip thumb and set it on YouTube."""
+    thumb_url = clip.get("thumb_url")
+    if not thumb_url:
+        logger.warning("clip %s has no thumbnail blob", clip.get("id"))
+        return False
+    source = work_dir / "thumb-source.jpg"
+    composed = work_dir / "thumb-youtube.jpg"
+    try:
+        blob.download_file(str(thumb_url), source)
+        hook = str(clip.get("clip_title") or "").strip()
+        if not hook:
+            hook = str(clip.get("yt_title") or "").split(" | ")[0]
+        thumbnails.compose(source, composed, hook)
+        if not youtube.wait_for_processing(client, video_id):
+            logger.warning(
+                "clip %s is not processed yet; skipping thumbnail",
+                clip.get("id"),
+            )
+            return False
+        youtube.set_thumbnail(client, video_id, composed)
+        return True
+    finally:
+        for path in (source, composed):
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def _run_upload() -> None:
@@ -234,6 +272,21 @@ def _run_upload() -> None:
                 _tags(clip),
                 privacy,
             )
+            if _wants_custom_thumbnail():
+                try:
+                    applied = _apply_custom_thumbnail(
+                        client, clip, video_id, target.parent
+                    )
+                    if applied:
+                        logger.info(
+                            "clip %s custom thumbnail set video_id=%s",
+                            clip_id,
+                            video_id,
+                        )
+                except Exception:
+                    logger.exception(
+                        "clip %s custom thumbnail failed", clip_id
+                    )
         except HttpError as exc:
             if youtube.is_upload_limit_error(exc):
                 if getattr(settings, "automation_enabled", False):

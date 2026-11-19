@@ -407,3 +407,112 @@ def test_upload_time_text_gate_rejects_sexual_title(
 
     assert statuses[0][1] == "rejected"
     assert statuses[0][2] == "moderation: title:18+"
+
+
+def test_custom_thumbnail_is_set_when_flag_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """YT_SET_THUMBNAIL=1 composes a thumbnail and sets it on the video."""
+    monkeypatch.setenv("UPLOAD_MODE", "api")
+    monkeypatch.setenv("YT_SET_THUMBNAIL", "1")
+    monkeypatch.setattr(upload, "load_config", config)
+    allow_upload(monkeypatch)
+    monkeypatch.setattr(
+        upload.db,
+        "get_youtube_connection",
+        lambda: {"refresh_token_enc": "encrypted", "scopes": ""},
+    )
+    monkeypatch.setattr(
+        upload.youtube, "get_client", lambda connection: object()
+    )
+    monkeypatch.setattr(
+        upload.db, "get_approved_for_upload", lambda limit, hours: [CLIP]
+    )
+
+    def fake_download(url: str, target: Any) -> Any:
+        """Create the requested local file."""
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"image")
+        return target
+
+    monkeypatch.setattr(upload.blob, "download_file", fake_download)
+    monkeypatch.setattr(upload.youtube, "upload_short", lambda *args: "video-id")
+    hooks: list[str] = []
+
+    def fake_compose(source: Any, out: Any, hook: str) -> Any:
+        """Record the hook and write a fake composed image."""
+        hooks.append(hook)
+        out.write_bytes(b"jpeg")
+        return out
+
+    monkeypatch.setattr(upload.thumbnails, "compose", fake_compose)
+    monkeypatch.setattr(
+        upload.youtube, "wait_for_processing", lambda *args, **kwargs: True
+    )
+    set_calls: list[tuple[str, Any]] = []
+    monkeypatch.setattr(
+        upload.youtube,
+        "set_thumbnail",
+        lambda client, video_id, path: set_calls.append((video_id, path)),
+    )
+    uploaded: list[str] = []
+    monkeypatch.setattr(
+        upload.db,
+        "mark_uploaded",
+        lambda clip_id, video_id: uploaded.append(video_id) or True,
+    )
+    monkeypatch.setattr(upload.blob, "delete_url", lambda url: None)
+
+    upload.run_upload()
+
+    assert hooks == ["Title"]
+    assert set_calls and set_calls[0][0] == "video-id"
+    assert uploaded == ["video-id"]
+
+
+def test_custom_thumbnail_failure_does_not_fail_clip(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A thumbnail error still leaves the uploaded clip marked uploaded."""
+    monkeypatch.setenv("UPLOAD_MODE", "api")
+    monkeypatch.setenv("YT_SET_THUMBNAIL", "1")
+    monkeypatch.setattr(upload, "load_config", config)
+    allow_upload(monkeypatch)
+    monkeypatch.setattr(
+        upload.db,
+        "get_youtube_connection",
+        lambda: {"refresh_token_enc": "encrypted", "scopes": ""},
+    )
+    monkeypatch.setattr(
+        upload.youtube, "get_client", lambda connection: object()
+    )
+    monkeypatch.setattr(
+        upload.db, "get_approved_for_upload", lambda limit, hours: [CLIP]
+    )
+
+    def fake_download(url: str, target: Any) -> Any:
+        """Create the requested local file."""
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"image")
+        return target
+
+    monkeypatch.setattr(upload.blob, "download_file", fake_download)
+    monkeypatch.setattr(upload.youtube, "upload_short", lambda *args: "video-id")
+    monkeypatch.setattr(
+        upload.thumbnails,
+        "compose",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("no font")),
+    )
+    monkeypatch.setattr(
+        upload.db,
+        "mark_uploaded",
+        lambda clip_id, video_id: True,
+    )
+    monkeypatch.setattr(upload.blob, "delete_url", lambda url: None)
+    monkeypatch.setattr(
+        upload.db,
+        "set_status",
+        lambda *args, **kwargs: pytest.fail("thumbnail failure must not fail clip"),
+    )
+
+    upload.run_upload()

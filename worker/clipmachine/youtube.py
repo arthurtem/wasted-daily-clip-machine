@@ -209,3 +209,52 @@ def get_video_statuses(
             if video_id:
                 statuses[video_id] = dict(item)
     return statuses
+
+
+def wait_for_processing(
+    client: Any, video_id: str, timeout: float = 180.0, interval: float = 5.0
+) -> bool:
+    """Wait until YouTube reports the video as processed; return success."""
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            response = (
+                client.videos()
+                .list(part="processingDetails,status", id=video_id)
+                .execute()
+            )
+        except HttpError as exc:
+            logger.warning(
+                "processing check failed for %s: %s",
+                video_id,
+                _error_text(exc),
+            )
+            return False
+        items = response.get("items") or []
+        if items:
+            item = items[0]
+            details = item.get("processingDetails") or {}
+            state = str(details.get("processingStatus") or "").lower()
+            upload_state = str(
+                (item.get("status") or {}).get("uploadStatus") or ""
+            ).lower()
+            if state == "succeeded" or upload_state == "processed":
+                return True
+            if state in {"failed", "terminated"}:
+                logger.warning(
+                    "video %s processing ended with status=%s", video_id, state
+                )
+                return False
+        if time.monotonic() >= deadline:
+            logger.warning("video %s did not finish processing in time", video_id)
+            return False
+        time.sleep(interval)
+
+
+def set_thumbnail(client: Any, video_id: str, path: Path) -> None:
+    """Upload and apply a custom thumbnail to a video or Short."""
+    media = MediaFileUpload(
+        str(path), mimetype="image/jpeg", resumable=False
+    )
+    client.thumbnails().set(videoId=video_id, media_body=media).execute()
+    logger.info("set custom thumbnail for video %s", video_id)
