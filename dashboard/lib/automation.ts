@@ -9,6 +9,7 @@ export interface AutomationState {
   launchDate: string | null;
   lastUploadLimitAt: string | null;
   lastQuotaErrorAt: string | null;
+  pausedUntil: string | null;
 }
 
 type Row = Record<string, unknown>;
@@ -30,7 +31,7 @@ export async function getAutomationState(): Promise<AutomationState> {
     const sql = getSql();
     const rows = (await sql`
       SELECT upload_cap, fetch_limit, render_limit, launch_date,
-             last_upload_limit_at, last_quota_error_at
+             last_upload_limit_at, last_quota_error_at, paused_until
       FROM automation_state
       WHERE id = TRUE
       LIMIT 1
@@ -44,6 +45,7 @@ export async function getAutomationState(): Promise<AutomationState> {
         launchDate: asIso(row.launch_date),
         lastUploadLimitAt: asIso(row.last_upload_limit_at),
         lastQuotaErrorAt: asIso(row.last_quota_error_at),
+        pausedUntil: asIso(row.paused_until),
       };
     }
   } catch (error) {
@@ -56,5 +58,6 @@ export async function getAutomationState(): Promise<AutomationState> {
     launchDate: null,
     lastUploadLimitAt: null,
     lastQuotaErrorAt: null,
+    pausedUntil: null,
   };
 }

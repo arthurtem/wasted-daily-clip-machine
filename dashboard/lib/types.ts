@@ -57,6 +57,7 @@ export interface Counts {
   uploadedToday: number;
   maxUploadsPerDay: number;
   nextUploadAt: string | null;
+  pausedUntil: string | null;
   uploadWindowStart: string;
   uploadWindowEnd: string;
   failed: number;

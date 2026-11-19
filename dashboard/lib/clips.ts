@@ -159,12 +159,17 @@ export async function getCounts(): Promise<Counts> {
   const row = rows[0] ?? {};
   const uploadedToday = asNumber(row.uploaded_today) ?? 0;
   const latest = row.latest_upload ? new Date(asIso(row.latest_upload) ?? "") : null;
-  const next = nextAllowedUpload(
-    new Date(),
-    policy,
-    latest && !Number.isNaN(latest.getTime()) ? latest : null,
-    uploadedToday,
-  );
+  const pausedUntil = automation.pausedUntil;
+  const paused = pausedUntil ? new Date(pausedUntil) : null;
+  const next =
+    paused && paused.getTime() > Date.now()
+      ? paused
+      : nextAllowedUpload(
+          new Date(),
+          policy,
+          latest && !Number.isNaN(latest.getTime()) ? latest : null,
+          uploadedToday,
+        );
   return {
     new: asNumber(row.new_count) ?? 0,
     rendered: asNumber(row.rendered) ?? 0,
@@ -172,6 +177,7 @@ export async function getCounts(): Promise<Counts> {
     uploadedToday,
     maxUploadsPerDay: policy.maxUploadsPerDay,
     nextUploadAt: next.toISOString(),
+    pausedUntil,
     uploadWindowStart: policy.windowStart,
     uploadWindowEnd: policy.windowEnd,
     failed: asNumber(row.failed) ?? 0,

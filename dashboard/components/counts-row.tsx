@@ -4,17 +4,22 @@ export default function CountsRow({ counts }: { counts: Counts }) {
   const nextUpload = counts.nextUploadAt
     ? new Date(counts.nextUploadAt)
     : null;
-  const nextLabel =
-    nextUpload && nextUpload.getTime() <= Date.now() + 60_000
+  const pausedUntil = counts.pausedUntil ? new Date(counts.pausedUntil) : null;
+  const paused = Boolean(pausedUntil && pausedUntil.getTime() > Date.now());
+  const format = (value: Date) =>
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Europe/Brussels",
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(value);
+  const nextLabel = paused && pausedUntil
+    ? format(pausedUntil)
+    : nextUpload && nextUpload.getTime() <= Date.now() + 60_000
       ? "Now"
       : nextUpload
-        ? new Intl.DateTimeFormat("en-GB", {
-            timeZone: "Europe/Brussels",
-            weekday: "short",
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false,
-          }).format(nextUpload)
+        ? format(nextUpload)
         : "—";
   const items = [
     { label: "Inbox", value: counts.new },
@@ -24,7 +29,7 @@ export default function CountsRow({ counts }: { counts: Counts }) {
       label: "Uploads today",
       value: `${counts.uploadedToday}/${counts.maxUploadsPerDay}`,
     },
-    { label: "Next upload", value: nextLabel },
+    { label: paused ? "Paused until" : "Next upload", value: nextLabel },
     { label: "Failed", value: counts.failed },
   ];
 
