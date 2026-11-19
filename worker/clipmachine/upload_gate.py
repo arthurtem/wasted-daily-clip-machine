@@ -34,6 +34,8 @@ def run_gate() -> tuple[bool, str]:
 
     state = db.get_automation_state() or {}
     now = datetime.now(timezone.utc)
+    if db.automation_paused(now):
+        return False, "paused after a YouTube rejection"
     for key in ("last_upload_limit_at", "last_quota_error_at"):
         value = state.get(key)
         if isinstance(value, datetime) and now - value < timedelta(minutes=30):

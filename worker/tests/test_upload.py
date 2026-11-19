@@ -9,7 +9,7 @@ import pytest
 from googleapiclient.errors import HttpError
 from httplib2 import Response
 
-from clipmachine import upload
+from clipmachine import moderation, upload
 
 
 def config() -> Any:
@@ -32,6 +32,13 @@ def allow_upload(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(upload, "inside_window", lambda now, policy: True)
     monkeypatch.setattr(upload.db, "count_uploads_since", lambda since: 0)
     monkeypatch.setattr(upload.db, "latest_upload_at", lambda: None)
+    monkeypatch.setattr(upload.db, "automation_paused", lambda now=None: False)
+    monkeypatch.setattr(upload, "check_upload_statuses", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        upload.moderation,
+        "screen_video",
+        lambda path, **kwargs: moderation.VideoScreening(moderation.CLEAN, 0.0),
+    )
 
 
 CLIP = {
@@ -245,3 +252,112 @@ def test_upload_limit_stops_without_failing_clip(
     )
 
     upload.run_upload()
+
+
+def test_upload_time_moderation_rejects_explicit_clip(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A clip flagged at upload time is rejected and never sent to YouTube."""
+    monkeypatch.setenv("UPLOAD_MODE", "api")
+    monkeypatch.setattr(upload, "load_config", config)
+    allow_upload(monkeypatch)
+    monkeypatch.setattr(
+        upload.moderation,
+        "screen_video",
+        lambda path, **kwargs: moderation.VideoScreening(
+            moderation.EXPLICIT, 0.91, ("FEMALE_BREAST_EXPOSED",)
+        ),
+    )
+    monkeypatch.setattr(
+        upload.db,
+        "get_youtube_connection",
+        lambda: {"refresh_token_enc": "encrypted", "scopes": ""},
+    )
+    monkeypatch.setattr(
+        upload.youtube, "get_client", lambda connection: object()
+    )
+    monkeypatch.setattr(
+        upload.db, "get_approved_for_upload", lambda limit, hours: [CLIP]
+    )
+    monkeypatch.setattr(
+        upload.blob, "download_file", lambda url, target: target
+    )
+    monkeypatch.setattr(
+        upload.youtube,
+        "upload_short",
+        lambda *args: pytest.fail("explicit clip must not upload"),
+    )
+    statuses: list[tuple[object, ...]] = []
+
+    def fake_status(
+        clip_id: str, status: str, error: str | None = None, **fields: Any
+    ) -> bool:
+        statuses.append((clip_id, status, error, fields))
+        return True
+
+    monkeypatch.setattr(upload.db, "set_status", fake_status)
+    deleted: list[str] = []
+    monkeypatch.setattr(
+        upload.blob, "delete_url", lambda url: deleted.append(url)
+    )
+
+    upload.run_upload()
+
+    assert statuses[0][1] == "rejected"
+    assert statuses[0][2] == "moderation: FEMALE_BREAST_EXPOSED"
+    assert statuses[0][3]["moderation_level"] == moderation.EXPLICIT
+    assert deleted == [CLIP["blob_url"], CLIP["thumb_url"]]
+
+
+def test_upload_time_moderation_downgrades_borderline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A borderline clip is uploaded unlisted even when approved as public."""
+    monkeypatch.setenv("UPLOAD_MODE", "api")
+    monkeypatch.setattr(upload, "load_config", config)
+    allow_upload(monkeypatch)
+    monkeypatch.setattr(
+        upload.moderation,
+        "screen_video",
+        lambda path, **kwargs: moderation.VideoScreening(
+            moderation.BORDERLINE, 0.41, ("FEMALE_BREAST_EXPOSED",)
+        ),
+    )
+    monkeypatch.setattr(
+        upload.db,
+        "get_youtube_connection",
+        lambda: {"refresh_token_enc": "encrypted", "scopes": ""},
+    )
+    monkeypatch.setattr(
+        upload.youtube, "get_client", lambda connection: object()
+    )
+    public_clip = dict(CLIP, yt_privacy="public")
+    monkeypatch.setattr(
+        upload.db, "get_approved_for_upload", lambda limit, hours: [public_clip]
+    )
+    monkeypatch.setattr(
+        upload.blob, "download_file", lambda url, target: target
+    )
+    privacies: list[object] = []
+
+    def fake_upload_short(*args: Any) -> str:
+        """Record the privacy used for the upload."""
+        privacies.append(args[5])
+        return "video-id"
+
+    monkeypatch.setattr(upload.youtube, "upload_short", fake_upload_short)
+    stored: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        upload.db,
+        "set_clip_privacy",
+        lambda clip_id, privacy: stored.append((clip_id, privacy)),
+    )
+    monkeypatch.setattr(
+        upload.db, "mark_uploaded", lambda clip_id, video_id: True
+    )
+    monkeypatch.setattr(upload.blob, "delete_url", lambda url: None)
+
+    upload.run_upload()
+
+    assert privacies == ["unlisted"]
+    assert stored == [("ClipAbc", "unlisted")]

@@ -39,6 +39,10 @@ UPDATABLE_FIELDS = frozenset(
         "thumbnail_url",
         "uploaded_at",
         "auto_rendered_at",
+        "yt_privacy",
+        "moderation_level",
+        "moderation_score",
+        "moderation_labels",
     }
 )
 MIGRATIONS_DIR_ENV = "MIGRATIONS_DIR"
@@ -587,3 +591,76 @@ def get_existing_clip_ids(clip_ids: list[str]) -> set[str]:
             "SELECT id FROM clips WHERE id = ANY(%s)", (cleaned,)
         ).fetchall()
     return {str(row[0]) for row in rows}
+
+
+def set_clip_privacy(clip_id: str, privacy: str) -> bool:
+    """Update a clip's stored YouTube privacy."""
+    if privacy not in {"public", "unlisted", "private"}:
+        raise ValueError(f"unknown privacy {privacy!r}")
+    with connect() as conn:
+        updated = conn.execute(
+            "UPDATE clips SET yt_privacy = %s, updated_at = now() WHERE id = %s",
+            (privacy, clip_id),
+        ).rowcount == 1
+    return updated
+
+
+def get_recent_uploads(since: datetime, limit: int = 50) -> list[dict[str, Any]]:
+    """Return recent uploaded clips that still have a YouTube video id."""
+    with connect(row_factory=dict_row) as conn:
+        rows = conn.execute(
+            """
+            SELECT id, streamer_login, youtube_video_id, uploaded_at
+            FROM clips
+            WHERE status = 'uploaded'
+              AND youtube_video_id IS NOT NULL
+              AND uploaded_at >= %s
+            ORDER BY uploaded_at DESC
+            LIMIT %s
+            """,
+            (since, limit),
+        ).fetchall()
+    return list(rows)
+
+
+def mark_youtube_rejected(clip_id: str, reason: str) -> bool:
+    """Move an uploaded clip to rejected after YouTube removes it."""
+    with connect() as conn:
+        updated = conn.execute(
+            """
+            UPDATE clips
+            SET status = 'rejected', error = %s, updated_at = now()
+            WHERE id = %s AND status = 'uploaded'
+            """,
+            (reason, clip_id),
+        ).rowcount == 1
+    if updated:
+        logger.error("clip %s rejected by YouTube: %s", clip_id, reason)
+    return updated
+
+
+def pause_automation(hours: int) -> None:
+    """Pause uploads for a number of hours after a policy rejection."""
+    with connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO automation_state (id, paused_until, updated_at)
+            VALUES (TRUE, now() + make_interval(hours => %s), now())
+            ON CONFLICT (id) DO UPDATE
+            SET paused_until = EXCLUDED.paused_until, updated_at = now()
+            """,
+            (hours,),
+        )
+    logger.error("automation paused for %d hour(s)", hours)
+
+
+def automation_paused(now: datetime | None = None) -> bool:
+    """Return whether uploads are paused after a policy rejection."""
+    with connect(row_factory=dict_row) as conn:
+        row = conn.execute(
+            "SELECT paused_until, now() AS current_time FROM automation_state WHERE id = TRUE"
+        ).fetchone()
+    if not row or row["paused_until"] is None:
+        return False
+    instant = now or row["current_time"]
+    return row["paused_until"] > instant

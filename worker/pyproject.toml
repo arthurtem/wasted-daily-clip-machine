@@ -17,6 +17,7 @@ dependencies = [
     "faster-whisper>=1.1",
     "pytesseract>=0.3.13",
     "Pillow>=10",
+    "nudenet>=3.4,<4",
     "cryptography>=42",
     "google-auth>=2.0",
     "google-api-python-client>=2.0",

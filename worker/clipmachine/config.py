@@ -64,6 +64,11 @@ class Settings:
     render_clip_timeout_seconds: int = 600
     fetch_interval_minutes: int = 90
     auto_approve: bool = False
+    moderation_enabled: bool = True
+    moderation_frames: int = 10
+    moderation_explicit_threshold: float = 0.50
+    moderation_review_threshold: float = 0.30
+    moderation_pause_hours: int = 24
     automation_enabled: bool = False
     automation_launch_date: str = "2026-11-19"
     automation_start_upload_cap: int = 75
@@ -260,6 +265,20 @@ def load_settings(
             raise ConfigError(f"{path}: {key} must be >= {minimum}; got {value}")
         return value
 
+    def optional_float(
+        key: str, default: float, minimum: float = 0.0, maximum: float = 1.0
+    ) -> float:
+        """Read an optional float setting inside the given bounds."""
+        value = data.get(key, default)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ConfigError(f"{path}: {key} must be a number")
+        number = float(value)
+        if not minimum <= number <= maximum:
+            raise ConfigError(
+                f"{path}: {key} must be between {minimum} and {maximum}; got {number}"
+            )
+        return number
+
     def time_setting(key: str, default: str) -> str:
         """Read an optional HH:MM setting."""
         value = data.get(key, default)
@@ -301,6 +320,9 @@ def load_settings(
     auto_approve = data.get("auto_approve", False)
     if not isinstance(auto_approve, bool):
         raise ConfigError(f"{path}: auto_approve must be true or false")
+    moderation_enabled = data.get("moderation_enabled", True)
+    if not isinstance(moderation_enabled, bool):
+        raise ConfigError(f"{path}: moderation_enabled must be true or false")
     automation_enabled = data.get("automation_enabled", False)
     if not isinstance(automation_enabled, bool):
         raise ConfigError(f"{path}: automation_enabled must be true or false")
@@ -345,6 +367,15 @@ def load_settings(
         ),
         fetch_interval_minutes=optional_int("fetch_interval_minutes", 90),
         auto_approve=auto_approve,
+        moderation_enabled=moderation_enabled,
+        moderation_frames=optional_int("moderation_frames", 10, 1),
+        moderation_explicit_threshold=optional_float(
+            "moderation_explicit_threshold", 0.50
+        ),
+        moderation_review_threshold=optional_float(
+            "moderation_review_threshold", 0.30
+        ),
+        moderation_pause_hours=optional_int("moderation_pause_hours", 24, 1),
         automation_enabled=automation_enabled,
         automation_launch_date=automation_launch_date,
         automation_start_upload_cap=optional_int(

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import psycopg
 
-from clipmachine import automation, db
+from clipmachine import automation, db, moderation
 from clipmachine.blob import delete_url, put_file
 from clipmachine.calibrate import CalibrateError, run_calibrate
 from clipmachine.captions import build_ass, has_burned_captions, transcribe
@@ -49,6 +49,14 @@ def _time_limit(seconds: int):
     finally:
         signal.alarm(0)
         signal.signal(signal.SIGALRM, previous)
+
+
+def _cleanup_work_dir(directory: Path) -> None:
+    """Remove a finished clip's work directory, warning on failure."""
+    try:
+        shutil.rmtree(directory)
+    except OSError as exc:
+        logger.warning("could not remove work directory %s: %s", directory, exc)
 
 
 def cmd_check_config(args: argparse.Namespace) -> int:
@@ -121,6 +129,7 @@ def _cmd_render(args: argparse.Namespace) -> int:
     auto_render = os.environ.get("AUTO_RENDER", "").strip() == "1"
     rendered = 0
     failed = 0
+    rejected = 0
     for clip in clips:
         clip_id = str(clip.get("id") or "")
         login = str(clip.get("streamer_login") or "").lower()
@@ -170,6 +179,34 @@ def _cmd_render(args: argparse.Namespace) -> int:
                     ass_path,
                 )
 
+                screening = moderation.ClipScreening(moderation.CLEAN, 0.0)
+                if getattr(settings, "moderation_enabled", True):
+                    screening = moderation.screen_clip(
+                        final_path, thumb_path, settings
+                    )
+                moderation_fields = {
+                    "moderation_level": screening.level,
+                    "moderation_score": screening.score,
+                    "moderation_labels": ", ".join(screening.labels),
+                }
+                if screening.blocked:
+                    labels = ", ".join(screening.labels) or "explicit"
+                    db.set_status(
+                        clip_id,
+                        "rejected",
+                        error=f"moderation: {labels}",
+                        **moderation_fields,
+                    )
+                    logger.warning(
+                        "clip %s rejected by moderation labels=%s score=%.2f",
+                        clip_id,
+                        labels,
+                        screening.score,
+                    )
+                    rejected += 1
+                    _cleanup_work_dir(source.parent)
+                    continue
+
                 metadata = build_youtube_metadata(clip)
                 video_url = put_file(final_path, f"shorts/{clip_id}.mp4")
                 uploaded.append(video_url)
@@ -178,14 +215,25 @@ def _cmd_render(args: argparse.Namespace) -> int:
                 )
                 uploaded.append(thumb_url)
 
+                fields: dict[str, object] = {
+                    "blob_url": video_url,
+                    "thumb_url": thumb_url,
+                    "yt_title": metadata.title,
+                    "yt_description": metadata.description,
+                    "yt_tags": metadata.tags,
+                    **moderation_fields,
+                }
+                current_privacy = str(clip.get("yt_privacy") or "public")
+                if screening.unlisted and current_privacy == "public":
+                    fields["yt_privacy"] = "unlisted"
+                    logger.info(
+                        "clip %s marked unlisted after borderline moderation",
+                        clip_id,
+                    )
                 db.set_status(
                     clip_id,
                     "approved" if settings.auto_approve else "rendered",
-                    blob_url=video_url,
-                    thumb_url=thumb_url,
-                    yt_title=metadata.title,
-                    yt_description=metadata.description,
-                    yt_tags=metadata.tags,
+                    **fields,
                 )
                 if auto_render:
                     try:
@@ -228,16 +276,14 @@ def _cmd_render(args: argparse.Namespace) -> int:
             failed += 1
             continue
 
-        try:
-            shutil.rmtree(source.parent)
-        except OSError as exc:
-            logger.warning(
-                "clip %s could not remove work directory: %s", clip_id, exc
-            )
+        _cleanup_work_dir(source.parent)
         rendered += 1
         logger.info("clip %s render complete layout=%s", clip_id, layout.kind)
 
-    print(f"Rendered and uploaded {rendered} clip(s), {failed} failed.")
+    summary = f"Rendered and uploaded {rendered} clip(s), {failed} failed."
+    if rejected:
+        summary += f" Rejected {rejected} clip(s) by moderation."
+    print(summary)
     return 0
 
 

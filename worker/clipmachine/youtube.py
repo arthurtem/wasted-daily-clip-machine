@@ -187,3 +187,25 @@ def upload_short(
         raise YouTubeError("YouTube upload returned no video id")
     logger.info("clip %s uploaded video_id=%s", path.parent.name, video_id)
     return video_id
+
+
+def get_video_statuses(
+    client: Any, video_ids: list[str]
+) -> dict[str, dict[str, Any]]:
+    """Return YouTube video status objects keyed by video id."""
+    cleaned = [str(video_id) for video_id in video_ids if str(video_id)]
+    if not cleaned:
+        return {}
+    statuses: dict[str, dict[str, Any]] = {}
+    for start in range(0, len(cleaned), 50):
+        chunk = cleaned[start : start + 50]
+        response = (
+            client.videos()
+            .list(part="status", id=",".join(chunk))
+            .execute()
+        )
+        for item in response.get("items") or []:
+            video_id = str(item.get("id") or "")
+            if video_id:
+                statuses[video_id] = dict(item)
+    return statuses

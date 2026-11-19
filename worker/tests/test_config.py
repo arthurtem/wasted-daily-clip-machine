@@ -218,3 +218,27 @@ def test_invalid_skip_burned_captions_is_rejected(tmp_path: Path) -> None:
         ConfigError, match="skip_burned_captions must be true or false"
     ):
         load_config(directory)
+
+
+def test_moderation_defaults(config_dir: Path) -> None:
+    """Moderation settings default to on with the documented thresholds."""
+    settings = load_settings(config_dir / "settings.yaml")
+
+    assert settings.moderation_enabled is True
+    assert settings.moderation_frames == 10
+    assert settings.moderation_explicit_threshold == pytest.approx(0.5)
+    assert settings.moderation_review_threshold == pytest.approx(0.3)
+    assert settings.moderation_pause_hours == 24
+
+
+def test_out_of_range_moderation_threshold_is_rejected(tmp_path: Path) -> None:
+    """A threshold above 1.0 is a configuration error."""
+    directory = write_config(
+        tmp_path / "bad",
+        settings=SETTINGS_YAML + "moderation_explicit_threshold: 1.5\n",
+    )
+
+    with pytest.raises(ConfigError) as exc_info:
+        load_settings(directory / "settings.yaml")
+
+    assert "moderation_explicit_threshold" in str(exc_info.value)

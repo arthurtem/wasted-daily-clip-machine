@@ -11,9 +11,10 @@ from typing import Any
 
 from googleapiclient.errors import HttpError
 
-from clipmachine import automation, blob, db, youtube
+from clipmachine import automation, blob, db, moderation, youtube
 from clipmachine.config import load_config
 from clipmachine.download import clip_dir
+from clipmachine.maintenance import check_upload_statuses
 from clipmachine.upload_policy import (
     day_start,
     inside_window,
@@ -50,6 +51,10 @@ def _run_upload() -> None:
         from clipmachine.maintenance import expire_stale
 
         expire_stale(int(stale_hours))
+
+    if db.automation_paused():
+        logger.warning("automation is paused after a YouTube rejection")
+        return
 
     policy = replace(
         policy_from_settings(settings), max_uploads_per_day=limits.upload_cap
@@ -96,6 +101,16 @@ def _run_upload() -> None:
         logger.error("YouTube client unavailable: %s", exc)
         return
 
+    check_upload_statuses(
+        client,
+        pause_hours=int(
+            getattr(settings, "moderation_pause_hours", 24)
+        ),
+    )
+    if db.automation_paused():
+        logger.warning("automation is paused after a YouTube rejection")
+        return
+
     reddit_priority_hours = int(
         getattr(settings, "reddit_priority_hours", 12)
     )
@@ -120,13 +135,76 @@ def _run_upload() -> None:
         target = clip_dir(clip_id) / "youtube.mp4"
         try:
             blob.download_file(str(blob_url), target)
+            screening = moderation.VideoScreening(moderation.CLEAN, 0.0)
+            if getattr(settings, "moderation_enabled", True):
+                screening = moderation.screen_video(
+                    target,
+                    frames=int(
+                        getattr(
+                            settings,
+                            "moderation_frames",
+                            moderation.DEFAULT_FRAMES,
+                        )
+                    ),
+                    explicit_threshold=float(
+                        getattr(
+                            settings,
+                            "moderation_explicit_threshold",
+                            moderation.DEFAULT_EXPLICIT_THRESHOLD,
+                        )
+                    ),
+                    review_threshold=float(
+                        getattr(
+                            settings,
+                            "moderation_review_threshold",
+                            moderation.DEFAULT_REVIEW_THRESHOLD,
+                        )
+                    ),
+                )
+            if screening.blocked:
+                labels = ", ".join(screening.labels) or "explicit"
+                db.set_status(
+                    clip_id,
+                    "rejected",
+                    error=f"moderation: {labels}",
+                    moderation_level=screening.level,
+                    moderation_score=screening.score,
+                    moderation_labels=labels,
+                )
+                for url in (clip.get("blob_url"), clip.get("thumb_url")):
+                    if not url:
+                        continue
+                    try:
+                        blob.delete_url(str(url))
+                    except Exception:
+                        logger.warning(
+                            "clip %s could not delete blob %s", clip_id, url
+                        )
+                logger.warning(
+                    "clip %s rejected by upload-time moderation labels=%s",
+                    clip_id,
+                    labels,
+                )
+                continue
+
+            privacy = str(clip.get("yt_privacy") or "")
+            if screening.level == moderation.BORDERLINE and privacy in {
+                "",
+                "public",
+            }:
+                privacy = "unlisted"
+                db.set_clip_privacy(clip_id, privacy)
+                logger.info(
+                    "clip %s downgraded to unlisted by moderation", clip_id
+                )
+
             video_id = youtube.upload_short(
                 client,
                 target,
                 _title(clip),
                 str(clip.get("yt_description") or ""),
                 _tags(clip),
-                str(clip.get("yt_privacy") or ""),
+                privacy,
             )
         except HttpError as exc:
             if youtube.is_upload_limit_error(exc):

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from clipmachine import db
+from clipmachine import db, moderation
 from clipmachine.cli import main
 from clipmachine.config import AppConfig, Settings, Streamer
 from clipmachine.facecam import Layout
@@ -223,6 +223,12 @@ def test_render_runs_full_pipeline(
     monkeypatch.setattr("clipmachine.cli.render_final", fake_render)
     monkeypatch.setattr("clipmachine.cli.put_file", fake_put)
     monkeypatch.setattr("clipmachine.cli.delete_url", lambda url: None)
+    monkeypatch.setattr(
+        "clipmachine.cli.moderation.screen_clip",
+        lambda video, thumb, settings: moderation.ClipScreening(
+            moderation.CLEAN, 0.0
+        ),
+    )
 
     assert main(["render"]) == 0
 
@@ -343,6 +349,12 @@ def test_render_upload_failure_deletes_partial_uploads(
     monkeypatch.setattr(
         "clipmachine.cli.delete_url", lambda url: deleted.append(url)
     )
+    monkeypatch.setattr(
+        "clipmachine.cli.moderation.screen_clip",
+        lambda video, thumb, settings: moderation.ClipScreening(
+            moderation.CLEAN, 0.0
+        ),
+    )
 
     assert main(["render"]) == 0
 
@@ -399,6 +411,12 @@ def test_render_skips_captions_when_burned_in(
         "clipmachine.cli.put_file", lambda path, pathname: f"https://blob/{pathname}"
     )
     monkeypatch.setattr("clipmachine.cli.delete_url", lambda url: None)
+    monkeypatch.setattr(
+        "clipmachine.cli.moderation.screen_clip",
+        lambda video, thumb, settings: moderation.ClipScreening(
+            moderation.CLEAN, 0.0
+        ),
+    )
 
     assert main(["render"]) == 0
     assert recorded_words == [[]]

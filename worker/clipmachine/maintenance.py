@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from clipmachine import blob, db
@@ -49,3 +50,47 @@ def expire_stale(stale_after_hours: int) -> int:
 def recover_abandoned_renders(minutes: int = 30) -> int:
     """Mark abandoned downloaded rows as timed out so retry is possible."""
     return db.recover_stale_downloads(minutes)
+
+
+def check_upload_statuses(
+    client: Any, *, hours: int = 72, pause_hours: int = 24
+) -> list[str]:
+    """Detect videos YouTube removed and pause automation after a rejection."""
+    from clipmachine import youtube
+
+    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+    uploads = db.get_recent_uploads(since, limit=150)
+    by_video = {
+        str(clip["youtube_video_id"]): clip
+        for clip in uploads
+        if clip.get("youtube_video_id")
+    }
+    if not by_video:
+        return []
+
+    try:
+        statuses = youtube.get_video_statuses(client, list(by_video))
+    except Exception as exc:
+        logger.warning("could not read YouTube upload statuses: %s", exc)
+        return []
+
+    rejected: list[str] = []
+    for video_id, item in statuses.items():
+        status = item.get("status") or {}
+        if str(status.get("uploadStatus") or "").lower() != "rejected":
+            continue
+        clip = by_video.get(video_id)
+        if clip is None:
+            continue
+        reason = str(status.get("rejectionReason") or "rejected")
+        db.mark_youtube_rejected(str(clip["id"]), f"youtube:{reason}")
+        rejected.append(str(clip["id"]))
+
+    if rejected:
+        db.pause_automation(pause_hours)
+        logger.error(
+            "paused automation for %d hour(s) after %d YouTube rejection(s)",
+            pause_hours,
+            len(rejected),
+        )
+    return rejected

@@ -103,6 +103,18 @@ run.
 Approved or rendered clips older than `stale_after_hours` are rejected with
 error `stale` and their Blob files are deleted at the start of upload/render.
 
+## Content moderation
+
+Every render samples `moderation_frames` stills from `final.mp4` and the
+thumbnail and scores them with NudeNet. Exposed-label scores at or above
+`moderation_explicit_threshold` reject the clip before anything is uploaded;
+scores between `moderation_review_threshold` and the explicit threshold approve
+it with `yt_privacy = unlisted`. A dirty thumbnail is re-extracted from a clean
+frame when one exists. Upload re-checks each approved clip, and recent uploads
+are polled for `uploadStatus = rejected`; a rejection marks that clip rejected
+and pauses automation for `moderation_pause_hours`. With
+`moderation_enabled: false` the gates are skipped.
+
 ## Work directory
 
 `render` writes to `work/<clip_id>/` (gitignored): `source.mp4`, `detect.jpg`
