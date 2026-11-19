@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { nextAllowedUpload, type UploadPolicy } from "./upload-policy";
+import {
+  dayStart,
+  nextAllowedUpload,
+  type UploadPolicy,
+} from "./upload-policy";
 
 const policy: UploadPolicy = {
   maxUploadsPerDay: 25,
@@ -11,12 +15,19 @@ const policy: UploadPolicy = {
   slotMinutes: 15,
 };
 
+describe("dayStart", () => {
+  it("starts the day at Brussels midnight", () => {
+    expect(dayStart(new Date("2026-11-16T12:05:00Z"), policy).toISOString()).toBe(
+      "2026-11-15T23:00:00.000Z",
+    );
+  });
+});
+
 describe("nextAllowedUpload", () => {
   it("moves an outside-window time to 13:00 Brussels", () => {
     const result = nextAllowedUpload(
       new Date("2026-11-16T06:00:00Z"),
       policy,
-      null,
       null,
       0,
     );
@@ -28,20 +39,18 @@ describe("nextAllowedUpload", () => {
       new Date("2026-11-16T12:05:00Z"),
       policy,
       new Date("2026-11-16T12:00:00Z"),
-      null,
       0,
     );
     expect(result.toISOString()).toBe("2026-11-16T12:30:00.000Z");
   });
 
-  it("waits for the oldest upload to leave the rolling 24h window", () => {
+  it("waits for the next local midnight once the day is full", () => {
     const result = nextAllowedUpload(
       new Date("2026-11-16T12:05:00Z"),
       policy,
       new Date("2026-11-16T12:00:00Z"),
-      new Date("2026-11-16T11:00:00Z"),
       25,
     );
-    expect(result.toISOString()).toBe("2026-11-17T12:00:00.000Z");
+    expect(result.toISOString()).toBe("2026-11-16T23:00:00.000Z");
   });
 });

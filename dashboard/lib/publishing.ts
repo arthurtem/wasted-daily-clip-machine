@@ -30,7 +30,7 @@ export async function getPublishingPlan(): Promise<PublishingPlan> {
   const next = counts.nextUploadAt ? new Date(counts.nextUploadAt) : null;
   const remaining = Math.max(
     0,
-    counts.maxUploadsPerDay - counts.uploadedLast24h,
+    counts.maxUploadsPerDay - counts.uploadedToday,
   );
   const scheduled = approved.map<ScheduledClip>((clip, index) => {
     const afterCap = index >= remaining;

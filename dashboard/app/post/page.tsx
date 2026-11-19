@@ -53,9 +53,9 @@ export default async function PostPage() {
 
       <section className="rounded-2xl border border-zinc-800 bg-zinc-900/50 px-4 py-3 text-sm text-zinc-400">
         <span className="text-zinc-200">
-          {plan.counts.uploadedLast24h} / {plan.counts.maxUploadsPerDay}
+          {plan.counts.uploadedToday} / {plan.counts.maxUploadsPerDay}
         </span>{" "}
-        uploaded in the last 24h · one clip every 10 minutes · next upload{" "}
+        uploaded today · one clip every 10 minutes · next upload{" "}
         <span className="text-zinc-200">
           {when(plan.counts.nextUploadAt)}
         </span>

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from clipmachine.upload_policy import (
     UploadPolicy,
+    day_start,
     inside_window,
     next_allowed_upload,
     next_window_start,
@@ -39,29 +40,34 @@ def test_next_window_start_moves_to_brussels_afternoon() -> None:
     )
 
 
+def test_day_start_uses_brussels_midnight() -> None:
+    """The day starts at local midnight, not UTC midnight."""
+    result = day_start(datetime(2026, 11, 16, 12, 5, tzinfo=timezone.utc), POLICY)
+
+    assert result == datetime(2026, 11, 15, 23, 0, tzinfo=timezone.utc)
+
+
 def test_next_allowed_respects_gap_and_slot() -> None:
     """The minimum gap is rounded to the next quarter-hour slot."""
     result = next_allowed_upload(
         datetime(2026, 11, 16, 12, 5, tzinfo=timezone.utc),
         policy=POLICY,
         latest_upload=datetime(2026, 11, 16, 12, 0, tzinfo=timezone.utc),
-        oldest_upload=None,
-        uploaded_last_24h=0,
+        uploaded_today=0,
     )
     assert result.astimezone(timezone.utc) == datetime(
         2026, 11, 16, 12, 30, tzinfo=timezone.utc
     )
 
 
-def test_next_allowed_respects_rolling_cap() -> None:
-    """The oldest upload must age out of the rolling window."""
+def test_next_allowed_waits_for_local_midnight() -> None:
+    """A full day's quota resets at the next local midnight."""
     result = next_allowed_upload(
         datetime(2026, 11, 16, 12, 5, tzinfo=timezone.utc),
         policy=POLICY,
         latest_upload=datetime(2026, 11, 16, 12, 0, tzinfo=timezone.utc),
-        oldest_upload=datetime(2026, 11, 16, 11, 0, tzinfo=timezone.utc),
-        uploaded_last_24h=25,
+        uploaded_today=25,
     )
     assert result.astimezone(timezone.utc) == datetime(
-        2026, 11, 17, 12, 0, tzinfo=timezone.utc
+        2026, 11, 16, 23, 0, tzinfo=timezone.utc
     )

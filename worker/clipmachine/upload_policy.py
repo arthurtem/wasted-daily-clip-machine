@@ -50,6 +50,22 @@ def local_now(now: datetime, policy: UploadPolicy) -> datetime:
     return now.astimezone(zone)
 
 
+def day_start(now: datetime, policy: UploadPolicy) -> datetime:
+    """Return the current day's local midnight as an instant."""
+    local = local_now(now, policy)
+    return local.replace(
+        hour=0, minute=0, second=0, microsecond=0
+    ).astimezone(timezone.utc)
+
+
+def next_day_start(now: datetime, policy: UploadPolicy) -> datetime:
+    """Return the next local midnight as an instant."""
+    local = local_now(now, policy) + timedelta(days=1)
+    return local.replace(
+        hour=0, minute=0, second=0, microsecond=0
+    ).astimezone(timezone.utc)
+
+
 def inside_window(now: datetime, policy: UploadPolicy) -> bool:
     """Return whether a local instant is inside the (possibly wrapping) window."""
     local = local_now(now, policy)
@@ -89,16 +105,15 @@ def next_allowed_upload(
     *,
     policy: UploadPolicy,
     latest_upload: datetime | None,
-    oldest_upload: datetime | None,
-    uploaded_last_24h: int,
+    uploaded_today: int,
 ) -> datetime:
     """Return the next instant the uploader may run."""
     candidate = now
     if latest_upload is not None:
         gap = timedelta(minutes=policy.min_minutes_between_uploads)
         candidate = max(candidate, latest_upload + gap)
-    if uploaded_last_24h >= policy.max_uploads_per_day and oldest_upload:
-        candidate = max(candidate, oldest_upload + timedelta(hours=24))
+    if uploaded_today >= policy.max_uploads_per_day:
+        candidate = max(candidate, next_day_start(now, policy))
     if not inside_window(candidate, policy):
         candidate = next_window_start(candidate, policy)
     return _round_to_slot(candidate, policy.slot_minutes)

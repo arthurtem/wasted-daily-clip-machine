@@ -15,6 +15,7 @@ from clipmachine import automation, blob, db, youtube
 from clipmachine.config import load_config
 from clipmachine.download import clip_dir
 from clipmachine.upload_policy import (
+    day_start,
     inside_window,
     policy_from_settings,
 )
@@ -62,12 +63,11 @@ def _run_upload() -> None:
             policy.timezone_name,
         )
         return
-    since = now - timedelta(hours=24)
-    uploaded_last_24h = db.count_uploads_since(since)
-    if uploaded_last_24h >= policy.max_uploads_per_day:
+    uploaded_today = db.count_uploads_since(day_start(now, policy))
+    if uploaded_today >= policy.max_uploads_per_day:
         logger.info(
             "daily upload cap reached (%d/%d)",
-            uploaded_last_24h,
+            uploaded_today,
             policy.max_uploads_per_day,
         )
         return
@@ -100,7 +100,7 @@ def _run_upload() -> None:
         getattr(settings, "reddit_priority_hours", 12)
     )
     requested = max(1, int(getattr(settings, "uploads_per_run", 1)))
-    remaining = max(0, policy.max_uploads_per_day - uploaded_last_24h)
+    remaining = max(0, policy.max_uploads_per_day - uploaded_today)
     limit = max(1, min(requested, remaining))
     clips = db.get_approved_for_upload(limit, reddit_priority_hours)
     if not clips:

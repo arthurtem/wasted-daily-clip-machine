@@ -21,8 +21,8 @@ export default function CountsRow({ counts }: { counts: Counts }) {
     { label: "Rendered", value: counts.rendered },
     { label: "Approved", value: counts.approved },
     {
-      label: "Uploads (24h)",
-      value: `${counts.uploadedLast24h}/${counts.maxUploadsPerDay}`,
+      label: "Uploads today",
+      value: `${counts.uploadedToday}/${counts.maxUploadsPerDay}`,
     },
     { label: "Next upload", value: nextLabel },
     { label: "Failed", value: counts.failed },
@@ -46,7 +46,7 @@ export default function CountsRow({ counts }: { counts: Counts }) {
         ))}
       </dl>
       <p className="text-[11px] text-zinc-500">
-        Uploads 24/7 · next slot every 10 minutes
+        Uploads reset at Brussels midnight · next slot every 10 minutes
       </p>
     </div>
   );

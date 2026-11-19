@@ -72,6 +72,30 @@ function localDateToUtc(
   return new Date(guess);
 }
 
+export function dayStart(date: Date, policy: UploadPolicy): Date {
+  const local = zonedParts(date, policy.timezone);
+  return localDateToUtc(
+    local.year,
+    local.month,
+    local.day,
+    0,
+    0,
+    policy.timezone,
+  );
+}
+
+export function nextDayStart(date: Date, policy: UploadPolicy): Date {
+  const local = zonedParts(date, policy.timezone);
+  return localDateToUtc(
+    local.year,
+    local.month,
+    local.day + 1,
+    0,
+    0,
+    policy.timezone,
+  );
+}
+
 export function insideWindow(date: Date, policy: UploadPolicy): boolean {
   const local = zonedParts(date, policy.timezone);
   const current = local.hour * 60 + local.minute;
@@ -117,8 +141,7 @@ export function nextAllowedUpload(
   now: Date,
   policy: UploadPolicy,
   latestUpload: Date | null,
-  oldestUpload: Date | null,
-  uploadedLast24h: number,
+  uploadedToday: number,
 ): Date {
   let candidate = now;
   if (latestUpload) {
@@ -129,12 +152,9 @@ export function nextAllowedUpload(
       ),
     );
   }
-  if (uploadedLast24h >= policy.maxUploadsPerDay && oldestUpload) {
+  if (uploadedToday >= policy.maxUploadsPerDay) {
     candidate = new Date(
-      Math.max(
-        candidate.getTime(),
-        oldestUpload.getTime() + 24 * 60 * 60 * 1000,
-      ),
+      Math.max(candidate.getTime(), nextDayStart(now, policy).getTime()),
     );
   }
   if (!insideWindow(candidate, policy)) {

@@ -12,7 +12,11 @@ from pathlib import Path
 from clipmachine import automation, db
 from clipmachine.config import load_config
 from clipmachine.maintenance import expire_stale
-from clipmachine.upload_policy import inside_window, policy_from_settings
+from clipmachine.upload_policy import (
+    day_start,
+    inside_window,
+    policy_from_settings,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +45,7 @@ def run_gate() -> tuple[bool, str]:
     if not inside_window(now, policy):
         return False, "outside upload window"
 
-    uploaded = db.count_uploads_since(now - timedelta(hours=24))
+    uploaded = db.count_uploads_since(day_start(now, policy))
     if uploaded >= policy.max_uploads_per_day:
         return False, f"daily cap reached ({uploaded}/{policy.max_uploads_per_day})"
 

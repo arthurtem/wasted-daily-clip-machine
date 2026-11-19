@@ -136,6 +136,11 @@ export async function getNewClips(): Promise<QueueClip[]> {
 
 export async function getCounts(): Promise<Counts> {
   const sql = getSql();
+  const automation = await getAutomationState();
+  const policy = {
+    ...uploadPolicy(),
+    maxUploadsPerDay: automation.uploadCap,
+  };
   const rows = (await sql`
     SELECT
       count(*) FILTER (WHERE status = 'new')::int AS new_count,
@@ -143,37 +148,28 @@ export async function getCounts(): Promise<Counts> {
       count(*) FILTER (WHERE status = 'approved')::int AS approved,
       count(*) FILTER (
         WHERE status = 'uploaded'
-          AND COALESCE(uploaded_at, updated_at) >= now() - interval '24 hours'
-      )::int AS uploaded_last_24h,
+          AND COALESCE(uploaded_at, updated_at) >=
+            date_trunc('day', now() AT TIME ZONE ${policy.timezone})
+            AT TIME ZONE ${policy.timezone}
+      )::int AS uploaded_today,
       count(*) FILTER (WHERE status = 'failed')::int AS failed,
-      max(COALESCE(uploaded_at, updated_at)) FILTER (WHERE status = 'uploaded') AS latest_upload,
-      min(COALESCE(uploaded_at, updated_at)) FILTER (
-        WHERE status = 'uploaded'
-          AND COALESCE(uploaded_at, updated_at) >= now() - interval '24 hours'
-      ) AS oldest_upload
+      max(COALESCE(uploaded_at, updated_at)) FILTER (WHERE status = 'uploaded') AS latest_upload
     FROM clips
   `) as Row[];
   const row = rows[0] ?? {};
-  const automation = await getAutomationState();
-  const policy = {
-    ...uploadPolicy(),
-    maxUploadsPerDay: automation.uploadCap,
-  };
-  const uploadedLast24h = asNumber(row.uploaded_last_24h) ?? 0;
+  const uploadedToday = asNumber(row.uploaded_today) ?? 0;
   const latest = row.latest_upload ? new Date(asIso(row.latest_upload) ?? "") : null;
-  const oldest = row.oldest_upload ? new Date(asIso(row.oldest_upload) ?? "") : null;
   const next = nextAllowedUpload(
     new Date(),
     policy,
     latest && !Number.isNaN(latest.getTime()) ? latest : null,
-    oldest && !Number.isNaN(oldest.getTime()) ? oldest : null,
-    uploadedLast24h,
+    uploadedToday,
   );
   return {
     new: asNumber(row.new_count) ?? 0,
     rendered: asNumber(row.rendered) ?? 0,
     approved: asNumber(row.approved) ?? 0,
-    uploadedLast24h,
+    uploadedToday,
     maxUploadsPerDay: policy.maxUploadsPerDay,
     nextUploadAt: next.toISOString(),
     uploadWindowStart: policy.windowStart,
