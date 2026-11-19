@@ -53,13 +53,13 @@ def recover_abandoned_renders(minutes: int = 30) -> int:
 
 
 def check_upload_statuses(
-    client: Any, *, hours: int = 72, pause_hours: int = 24
+    client: Any, *, hours: int = 168, pause_hours: int = 24
 ) -> list[str]:
     """Detect videos YouTube removed and pause automation after a rejection."""
     from clipmachine import youtube
 
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
-    uploads = db.get_recent_uploads(since, limit=150)
+    uploads = db.get_recent_uploads(since, limit=1000)
     by_video = {
         str(clip["youtube_video_id"]): clip
         for clip in uploads
