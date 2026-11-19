@@ -15,6 +15,7 @@ from clipmachine import automation, blob, db, moderation, youtube
 from clipmachine import thumbnail as thumbnails
 from clipmachine.config import load_config
 from clipmachine.download import clip_dir
+from clipmachine.hook import make_hook
 from clipmachine.maintenance import check_upload_statuses
 from clipmachine.upload_policy import (
     day_start,
@@ -54,10 +55,7 @@ def _apply_custom_thumbnail(
     composed = work_dir / "thumb-youtube.jpg"
     try:
         blob.download_file(str(thumb_url), source)
-        hook = str(clip.get("clip_title") or "").strip()
-        if not hook:
-            hook = str(clip.get("yt_title") or "").split(" | ")[0]
-        thumbnails.compose(source, composed, hook)
+        thumbnails.compose(source, composed, make_hook(clip))
         if not youtube.wait_for_processing(client, video_id):
             logger.warning(
                 "clip %s is not processed yet; skipping thumbnail",

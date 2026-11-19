@@ -465,7 +465,7 @@ def test_custom_thumbnail_is_set_when_flag_enabled(
 
     upload.run_upload()
 
-    assert hooks == ["Title"]
+    assert hooks == ["Streamer in GTA 6"]
     assert set_calls and set_calls[0][0] == "video-id"
     assert uploaded == ["video-id"]
 
